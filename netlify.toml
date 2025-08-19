@@ -1,2 +1,5 @@
+[build]
+publish = "pase-scc"  # <- donde está tu index.html
+
 [functions]
-  directory = "netlify/functions"
+directory = "netlify/functions"
