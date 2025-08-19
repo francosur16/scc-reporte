@@ -1492,7 +1492,7 @@ function handleCardAction(id, action, cardEl){
     });
 
 
-// REEMPLAZADO: handler robusto que no frena el guardado si falla un adjunto
+// REEMPLAZO COMPLETO — handler con timeout por archivo y siempre sale del "Guardando..."
 btnSave.addEventListener('click', async ()=>{
   const nt = ti.value.trim();
   if(!nt){ ti.focus(); return }
@@ -1502,6 +1502,13 @@ btnSave.addEventListener('click', async ()=>{
   const prevHTML = btnSave.innerHTML;
   btnSave.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
 
+  // helper de timeout (no cancela la subida real, pero evita que la UI quede colgada)
+  const withTimeout = (p, ms=25000) =>
+    Promise.race([
+      p,
+      new Promise((_,rej)=> setTimeout(()=> rej(new Error('timeout')), ms))
+    ]);
+
   try{
     // Actualizamos campos del item
     it.titulo      = nt;
@@ -1509,33 +1516,36 @@ btnSave.addEventListener('click', async ()=>{
     it.responsable = (get('responsable').value||'').trim();
     it.updatedAt   = new Date().toISOString();
 
-    // Subir adjuntos si hay (sin bloquear el guardado ante errores)
+    // Subir adjuntos si hay (robusto)
     const filesInput = get('files');
     if (filesInput && filesInput.files && filesInput.files.length){
       it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
 
+      // subimos secuencialmente (más simple de depurar)
       for (const f of Array.from(filesInput.files)){
         try{
-          // Validación de tamaño
           const sizeMB = f.size / (1024*1024);
           if (sizeMB > MAX_FILE_MB){
             alert(`"${f.name}" pesa ${sizeMB.toFixed(1)} MB. Límite: ${MAX_FILE_MB} MB.`);
             continue;
           }
 
-          // Nombre/path seguro
           const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
           const path = `${it.id}/${Date.now()}-${safeName}`;
 
-          // Upload (puede tirar error de red/CORS/RLS)
-          const { error: upErr } = await supa.storage.from(BUCKET).upload(path, f);
-          if (upErr){
-            console.error('upload error', upErr);
-            alert(`No se pudo subir "${f.name}": ${upErr.message || upErr}`);
+          // ⏱ sube con timeout (25s por archivo)
+          const upRes = await withTimeout(
+            supa.storage.from(BUCKET).upload(path, f, { upsert:false }),
+            25000
+          );
+
+          // si vino como { error }, lo tratamos
+          if (upRes?.error){
+            console.error('upload error', upRes.error);
+            alert(`No se pudo subir "${f.name}": ${upRes.error.message || upRes.error}`);
             continue;
           }
 
-          // Public URL
           const { data: pub, error: pubErr } = supa.storage.from(BUCKET).getPublicUrl(path);
           if (pubErr || !pub?.publicUrl){
             console.error('publicUrl error', pubErr);
@@ -1551,22 +1561,29 @@ btnSave.addEventListener('click', async ()=>{
             name: f.name
           });
         }catch(e){
-          console.error('upload exception', e);
-          alert(`Error de red al subir "${f.name}". Se guardará igual sin ese adjunto.`);
+          console.error('upload exception/timeout', e);
+          const msg = (e && e.message === 'timeout')
+            ? 'Tardó demasiado (timeout).'
+            : 'Error de red.';
+          alert(`No se pudo subir "${f.name}": ${msg} Se guardará igual sin ese adjunto.`);
           continue;
         }
       }
     }
 
-    // SIEMPRE guardamos el item, aunque algún adjunto haya fallado
+    // SIEMPRE guardamos (aunque algún adjunto haya fallado o demorado)
     save();
     render();
+  }catch(err){
+    console.error('btnSave fatal', err);
+    alert('Ocurrió un error inesperado al guardar.');
   }finally{
-    // restaurar botón
+    // restaurar botón sí o sí
     btnSave.disabled = false;
     btnSave.innerHTML = prevHTML;
   }
 });
+
     btnCancel.addEventListener('click', ()=>{ render(); });
   }
 }
