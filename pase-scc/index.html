@@ -656,6 +656,7 @@ body.presentation .empty-col{
 .att-img img{ max-width:120px; max-height:90px; border:1px solid var(--border); border-radius:8px; display:block }
 
 
+
 </style>
 </head>
 <body>
@@ -858,12 +859,13 @@ body.presentation .empty-col{
   <img src="img/newmont-logo.png" alt="Newmont" class="corner-logo">
 
   <script>
-
     // ===== Supabase: config =====
 const SUPABASE_URL = 'https://ixzpjcuuvorndkgphtue.supabase.co';   // Settings > API > Project URL
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enBqY3V1dm9ybmRrZ3BodHVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU1MzgzMjcsImV4cCI6MjA3MTExNDMyN30.m5t7dnPUpNygn0VD4NccsZsUcNoxJJXKnMUkspHNpp8';                    // Settings > API > anon public
 const BOARD_SLUG = 'scc-reporte-publico';
 const BUCKET = 'scc-uploads';
+const MAX_FILE_MB = 5; // límite por archivo (podés subirlo/lowerlo)
+
 
 const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -1018,6 +1020,20 @@ function rich(text){
   h = highlightHTML(h, searchQuery);
   return h;
 }
+
+function showSavedToast(){
+  const t = document.getElementById('toastSaved');
+  if(!t) return;
+  t.style.opacity = '1';
+  t.style.transform = 'translateY(0)';
+  clearTimeout(showSavedToast._to);
+  showSavedToast._to = setTimeout(()=>{
+    t.style.opacity = '0';
+    t.style.transform = 'translateY(8px)';
+  }, 1400);
+}
+
+
 function deleteCampaignById(id){
   const idx = state.campaigns.findIndex(c=>c.id===id);
   if(idx < 0) return;
@@ -1050,12 +1066,16 @@ async function saveCloud(){
     });
     const j = await r.json();
     console.log('[push]', j);
-    return !!j?.ok;
+
+    const ok = !!j?.ok;
+    if (ok) showSavedToast();     // 👈 muestra "Guardado ✅" si guardó bien
+    return ok;
   }catch(e){
     console.log('[push ERR]', e);
     return false;
   }
 }
+
 
     function active(){ return state.campaigns.find(c=>c.id===state.activeId) || null }
     function ensureCampaign(){ if(!state.campaigns.length){ openCampaignModal('new'); }}
@@ -1306,8 +1326,10 @@ function editCardHTML(it){
 
       <textarea data-edit="detalle" placeholder="Detalle (agregá toda la info relevante)">${esc(it.detalle||'')}</textarea>
 
-      <input type="file" data-edit="files" multiple />
-<small class="muted">Podés adjuntar imágenes, PDF, etc. (se suben al guardar)</small>
+   <input type="file" data-edit="files" multiple
+       accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"/>
+<small class="muted">Adjuntos (máx. ${MAX_FILE_MB} MB por archivo). Se suben al guardar.</small>
+
 
       <div class="edit-grid">
         <input type="text" data-edit="responsable" placeholder="Responsable / Sector" value="${esc(it.responsable||'')}"/>
@@ -1469,6 +1491,7 @@ function handleCardAction(id, action, cardEl){
       if(ev.key === 'Escape'){ ev.preventDefault(); btnCancel.click(); }
     });
 
+
 // REEMPLAZA SOLO ESTE HANDLER DE GUARDAR (dentro de if(action==='edit'){...})
 btnSave.addEventListener('click', async ()=>{
   const nt = ti.value.trim();
@@ -1480,40 +1503,43 @@ btnSave.addEventListener('click', async ()=>{
   it.responsable = (get('responsable').value||'').trim();
   it.updatedAt   = new Date().toISOString();
 
-  // Subir adjuntos si hay (usa el <input type="file" data-edit="files"> del paso 6.3)
-  const filesInput = get('files');
-  if (filesInput && filesInput.files && filesInput.files.length){
-    it.attachments = it.attachments || [];
+// Subir adjuntos si hay
+const filesInput = get('files');
+if (filesInput && filesInput.files && filesInput.files.length){
+  it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
 
-    for (const f of Array.from(filesInput.files)){
-      // nombre “seguro” para el path
-      const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-      // cada archivo va en una carpeta con el ID del item
-      const path = `${it.id}/${Date.now()}-${safeName}`;
-
-      // subir al bucket público
-      const { error: upErr } = await supa
-        .storage
-        .from(BUCKET)
-        .upload(path, f,);
-
-      if (upErr){
-        console.error('upload', upErr);
-        alert('No se pudo subir: ' + f.name);
-        continue;
-      }
-
-      // URL pública para mostrar/abrir
-      const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path);
-      it.attachments.push({
-        path,
-        url: pub.publicUrl,
-        mime: f.type,
-        size: f.size,
-        name: f.name
-      });
+  for (const f of Array.from(filesInput.files)){
+    // 3.a) Validación de tamaño
+    const sizeMB = f.size / (1024*1024);
+    if (sizeMB > MAX_FILE_MB){
+      alert(`"${f.name}" pesa ${sizeMB.toFixed(1)} MB. Límite: ${MAX_FILE_MB} MB.`);
+      continue;
     }
+
+    // 3.b) Nombre/path “seguro”
+    const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const path = `${it.id}/${Date.now()}-${safeName}`;
+
+    // 3.c) Subir al bucket público
+    const { error: upErr } = await supa.storage.from(BUCKET).upload(path, f);
+    if (upErr){
+      console.error('upload', upErr);
+      alert('No se pudo subir: ' + f.name);
+      continue;
+    }
+
+    // 3.d) URL pública para mostrar/abrir
+    const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path);
+    it.attachments.push({
+      path,
+      url: pub.publicUrl,
+      mime: f.type,
+      size: f.size,
+      name: f.name
+    });
   }
+}
+
 
   save();   // guarda local + nube (porque ya reemplazaste save() en el paso 5.2)
   render(); // re-dibuja la tarjeta con las miniaturas/links
@@ -1855,7 +1881,6 @@ const add=(cat,tit,det,resp,days,res=false)=>{
   render();
   if (!state.campaigns.length) ensureCampaign(); // abre modal "Nueva" si está vacío
 
-  setupRealtime();
 })();
 
 
@@ -1875,7 +1900,17 @@ window.scc = {
   cloudSave: saveCloud
 };
 
-  </script>
+</script>
+<!-- Toast de guardado -->
+<div id="toastSaved" style="
+  position: fixed; right: 16px; bottom: 16px;
+  background: #0b1220; color: #fff;
+  border: 1px solid #1f2937; border-radius: 10px;
+  padding: 10px 12px; font-weight: 700; font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  opacity: 0; pointer-events: none; transform: translateY(8px);
+  transition: opacity .18s ease, transform .18s ease; z-index: 2000;">
+  Guardado ✅
+</div>
 </body>
-
 </html>
