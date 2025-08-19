@@ -1492,7 +1492,7 @@ function handleCardAction(id, action, cardEl){
     });
 
 
-// REEMPLAZO COMPLETO — handler con timeout por archivo y siempre sale del "Guardando..."
+// REEMPLAZO COMPLETO — handler con probe, timeout y logs
 btnSave.addEventListener('click', async ()=>{
   const nt = ti.value.trim();
   if(!nt){ ti.focus(); return }
@@ -1502,12 +1502,32 @@ btnSave.addEventListener('click', async ()=>{
   const prevHTML = btnSave.innerHTML;
   btnSave.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
 
-  // helper de timeout (no cancela la subida real, pero evita que la UI quede colgada)
-  const withTimeout = (p, ms=25000) =>
-    Promise.race([
-      p,
-      new Promise((_,rej)=> setTimeout(()=> rej(new Error('timeout')), ms))
-    ]);
+  // helper de timeout (no cancela la subida, solo evita UI colgada)
+  const withTimeout = (p, ms=60000) =>
+    Promise.race([ p, new Promise((_,rej)=> setTimeout(()=> rej(new Error('timeout')), ms)) ]);
+
+  // ---- PROBE: prueba de escritura al bucket antes de subir archivos grandes
+  async function canUpload() {
+    try{
+      const probePath = `${it.id}/__probe-${Date.now()}.txt`;
+      const blob = new Blob([new Uint8Array([0x70])], { type: 'text/plain' });
+      const upRes = await withTimeout(
+        supa.storage.from(BUCKET).upload(probePath, blob, { upsert:false, contentType: 'text/plain' }),
+        8000 // 8s para el probe
+      );
+      if (upRes?.error){
+        console.error('[probe] upload error:', upRes.error);
+        return { ok:false, err: upRes.error };
+      }
+      // borrar el probe para no ensuciar
+      const delRes = await supa.storage.from(BUCKET).remove([probePath]);
+      if (delRes?.error) console.warn('[probe] remove warn:', delRes.error);
+      return { ok:true };
+    }catch(e){
+      console.error('[probe] exception/timeout:', e);
+      return { ok:false, err:e };
+    }
+  }
 
   try{
     // Actualizamos campos del item
@@ -1516,12 +1536,31 @@ btnSave.addEventListener('click', async ()=>{
     it.responsable = (get('responsable').value||'').trim();
     it.updatedAt   = new Date().toISOString();
 
-    // Subir adjuntos si hay (robusto)
     const filesInput = get('files');
-    if (filesInput && filesInput.files && filesInput.files.length){
+    const hasFiles = filesInput && filesInput.files && filesInput.files.length;
+
+    if (hasFiles){
+      // 1) Probar permiso/escritura rápida
+      const probe = await canUpload();
+      if (!probe.ok){
+        const msg = probe.err?.message || String(probe.err || '');
+        alert(
+          'No se pudo escribir en el bucket.\n\n' +
+          'Posibles causas:\n' +
+          '• El bucket "'+BUCKET+'" no existe o no es público.\n' +
+          '• Falta política de INSERT para el rol anon.\n' +
+          '• CORS/bloqueo de red.\n\n' +
+          'Detalle: ' + msg
+        );
+        console.error('[upload] probe failed:', probe.err);
+        // Guardamos igual el item (sin adjuntos) y salimos
+        save(); render();
+        return;
+      }
+
+      // 2) Subimos archivos (secuencial + timeout + logs)
       it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
 
-      // subimos secuencialmente (más simple de depurar)
       for (const f of Array.from(filesInput.files)){
         try{
           const sizeMB = f.size / (1024*1024);
@@ -1533,22 +1572,26 @@ btnSave.addEventListener('click', async ()=>{
           const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
           const path = `${it.id}/${Date.now()}-${safeName}`;
 
-          // ⏱ sube con timeout (25s por archivo)
+          console.log('[upload] start', { path, name:f.name, size:f.size, type:f.type });
+
           const upRes = await withTimeout(
-            supa.storage.from(BUCKET).upload(path, f, { upsert:false }),
-            25000
+            supa.storage.from(BUCKET).upload(path, f, {
+              upsert: false,
+              contentType: f.type || undefined,
+              cacheControl: '3600'
+            }),
+            60000 // 60s por archivo
           );
 
-          // si vino como { error }, lo tratamos
           if (upRes?.error){
-            console.error('upload error', upRes.error);
+            console.error('[upload] error object:', upRes.error);
             alert(`No se pudo subir "${f.name}": ${upRes.error.message || upRes.error}`);
             continue;
           }
 
           const { data: pub, error: pubErr } = supa.storage.from(BUCKET).getPublicUrl(path);
           if (pubErr || !pub?.publicUrl){
-            console.error('publicUrl error', pubErr);
+            console.error('[publicUrl] error:', pubErr);
             alert(`Subió "${f.name}" pero no obtuve URL pública.`);
             continue;
           }
@@ -1560,25 +1603,26 @@ btnSave.addEventListener('click', async ()=>{
             size: f.size,
             name: f.name
           });
+
+          console.log('[upload] ok', { path, publicUrl: pub.publicUrl });
         }catch(e){
-          console.error('upload exception/timeout', e);
+          console.error('[upload] exception/timeout', e);
           const msg = (e && e.message === 'timeout')
             ? 'Tardó demasiado (timeout).'
-            : 'Error de red.';
+            : (e?.message || 'Error de red.');
           alert(`No se pudo subir "${f.name}": ${msg} Se guardará igual sin ese adjunto.`);
           continue;
         }
       }
     }
 
-    // SIEMPRE guardamos (aunque algún adjunto haya fallado o demorado)
+    // Guardamos SIEMPRE (aunque algún adjunto haya fallado)
     save();
     render();
   }catch(err){
     console.error('btnSave fatal', err);
     alert('Ocurrió un error inesperado al guardar.');
   }finally{
-    // restaurar botón sí o sí
     btnSave.disabled = false;
     btnSave.innerHTML = prevHTML;
   }
