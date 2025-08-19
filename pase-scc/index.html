@@ -1029,45 +1029,32 @@ function deleteCampaignById(id){
   render();
 }
 
-// ---- Nube: cargar/guardar y tiempo real
 async function loadCloud(){
-  const { data, error } = await supa
-    .from('boards')
-    .select('data')
-    .eq('slug', BOARD_SLUG)
-    .maybeSingle();
-  console.log('[loadCloud]', error || 'ok', !!data);
-  return data?.data || null;
+  try{
+    const r = await fetch(`/.netlify/functions/pull?slug=${encodeURIComponent(BOARD_SLUG)}`, { cache:'no-store' });
+    const j = await r.json();
+    console.log('[pull]', j);
+    return j?.data || null;
+  }catch(e){
+    console.log('[pull ERR]', e);
+    return null;
+  }
 }
 
 async function saveCloud(){
-  const payload = { slug: BOARD_SLUG, data: state, updated_at: new Date().toISOString() };
-  const { data, error } = await supa
-    .from('boards')
-    .upsert(payload, { onConflict: 'slug' });
-  console.log('[saveCloud]', error || 'ok', data || null);
-  return !error;
-}
-function setupRealtime(){
-  supa
-    .channel('boards-live')
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'boards', filter: `slug=eq.${BOARD_SLUG}` },
-      (payload) => {
-        const remote = payload.new?.data;
-        if (!remote) return;
-        // Evitá re-render si es igual
-        const localHash  = JSON.stringify(state);
-        const remoteHash = JSON.stringify(remote);
-        if (remoteHash !== localHash){
-          state = remote;
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-          render();
-        }
-      }
-    )
-    .subscribe();
+  try{
+    const r = await fetch('/.netlify/functions/push', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: BOARD_SLUG, data: state })
+    });
+    const j = await r.json();
+    console.log('[push]', j);
+    return !!j?.ok;
+  }catch(e){
+    console.log('[push ERR]', e);
+    return false;
+  }
 }
 
     function active(){ return state.campaigns.find(c=>c.id===state.activeId) || null }
@@ -1890,4 +1877,5 @@ window.scc = {
 
   </script>
 </body>
+
 </html>
