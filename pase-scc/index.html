@@ -1492,60 +1492,81 @@ function handleCardAction(id, action, cardEl){
     });
 
 
-// REEMPLAZA SOLO ESTE HANDLER DE GUARDAR (dentro de if(action==='edit'){...})
+// REEMPLAZADO: handler robusto que no frena el guardado si falla un adjunto
 btnSave.addEventListener('click', async ()=>{
   const nt = ti.value.trim();
   if(!nt){ ti.focus(); return }
 
-  // Actualizamos campos del item
-  it.titulo      = nt;
-  it.detalle     = (ta.value||'').trim();
-  it.responsable = (get('responsable').value||'').trim();
-  it.updatedAt   = new Date().toISOString();
+  // feedback de “ocupado”
+  btnSave.disabled = true;
+  const prevHTML = btnSave.innerHTML;
+  btnSave.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
 
-// Subir adjuntos si hay
-const filesInput = get('files');
-if (filesInput && filesInput.files && filesInput.files.length){
-  it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
+  try{
+    // Actualizamos campos del item
+    it.titulo      = nt;
+    it.detalle     = (ta.value||'').trim();
+    it.responsable = (get('responsable').value||'').trim();
+    it.updatedAt   = new Date().toISOString();
 
-  for (const f of Array.from(filesInput.files)){
-    // 3.a) Validación de tamaño
-    const sizeMB = f.size / (1024*1024);
-    if (sizeMB > MAX_FILE_MB){
-      alert(`"${f.name}" pesa ${sizeMB.toFixed(1)} MB. Límite: ${MAX_FILE_MB} MB.`);
-      continue;
+    // Subir adjuntos si hay (sin bloquear el guardado ante errores)
+    const filesInput = get('files');
+    if (filesInput && filesInput.files && filesInput.files.length){
+      it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
+
+      for (const f of Array.from(filesInput.files)){
+        try{
+          // Validación de tamaño
+          const sizeMB = f.size / (1024*1024);
+          if (sizeMB > MAX_FILE_MB){
+            alert(`"${f.name}" pesa ${sizeMB.toFixed(1)} MB. Límite: ${MAX_FILE_MB} MB.`);
+            continue;
+          }
+
+          // Nombre/path seguro
+          const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+          const path = `${it.id}/${Date.now()}-${safeName}`;
+
+          // Upload (puede tirar error de red/CORS/RLS)
+          const { error: upErr } = await supa.storage.from(BUCKET).upload(path, f);
+          if (upErr){
+            console.error('upload error', upErr);
+            alert(`No se pudo subir "${f.name}": ${upErr.message || upErr}`);
+            continue;
+          }
+
+          // Public URL
+          const { data: pub, error: pubErr } = supa.storage.from(BUCKET).getPublicUrl(path);
+          if (pubErr || !pub?.publicUrl){
+            console.error('publicUrl error', pubErr);
+            alert(`Subió "${f.name}" pero no obtuve URL pública.`);
+            continue;
+          }
+
+          it.attachments.push({
+            path,
+            url: pub.publicUrl,
+            mime: f.type,
+            size: f.size,
+            name: f.name
+          });
+        }catch(e){
+          console.error('upload exception', e);
+          alert(`Error de red al subir "${f.name}". Se guardará igual sin ese adjunto.`);
+          continue;
+        }
+      }
     }
 
-    // 3.b) Nombre/path “seguro”
-    const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-    const path = `${it.id}/${Date.now()}-${safeName}`;
-
-    // 3.c) Subir al bucket público
-    const { error: upErr } = await supa.storage.from(BUCKET).upload(path, f);
-    if (upErr){
-      console.error('upload', upErr);
-      alert('No se pudo subir: ' + f.name);
-      continue;
-    }
-
-    // 3.d) URL pública para mostrar/abrir
-    const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path);
-    it.attachments.push({
-      path,
-      url: pub.publicUrl,
-      mime: f.type,
-      size: f.size,
-      name: f.name
-    });
+    // SIEMPRE guardamos el item, aunque algún adjunto haya fallado
+    save();
+    render();
+  }finally{
+    // restaurar botón
+    btnSave.disabled = false;
+    btnSave.innerHTML = prevHTML;
   }
-}
-
-
-  save();   // guarda local + nube (porque ya reemplazaste save() en el paso 5.2)
-  render(); // re-dibuja la tarjeta con las miniaturas/links
 });
-
-
     btnCancel.addEventListener('click', ()=>{ render(); });
   }
 }
