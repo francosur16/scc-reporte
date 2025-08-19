@@ -1,0 +1,1893 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reporte de Campaña · SCC</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+<style>
+/* =========================================================
+   VARIABLES
+========================================================= */
+:root{
+  /* Colores/base */
+  --blue-900:#0b1220; --blue-800:#152a42; --bg:#f8fafc;
+  --goldenrod:#daa520; --goldenrod-700:#b88914;
+  --text:#0b0f14; --muted:#6b7280; --card:#ffffff; --border:#e5e7eb;
+  --cat-importantes:#daa520; --cat-directivas:#3b82f6; --cat-pendiente:#f59e0b; --cat-informativo:#6b7280;
+
+  /* Layout (app normal) */
+  --container-max:1680px;
+  --grid-gap:16px;
+
+  /* Presentación (para JS) */
+  --present-head-h:56px;  /* alto header presentación */
+  --cat-head-h:52px;      /* alto título de categoría */
+
+  /* Rail / tarjetas */
+  --rail-w:32px;
+  --rail-gap:16px;
+  --rail-shift:-8px;
+
+  /* Ritmo vertical tarjetas */
+  --card-vgap:10px;
+  --meta-gap:8px;
+
+  /* ===== Claves del nuevo modo presentación ===== */
+  --present-page: 1500px;   /* << ANCHO ÚNICO para título y contenido */
+  --hud-space: 300px;       /* reserva derecha para flechas + Salir (0 en mobile) */
+}
+
+/* =========================================================
+   BASE
+========================================================= */
+*{ box-sizing:border-box }
+html,body{ height:100% }
+body{
+  margin:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  color:var(--text);
+  background:var(--bg);
+}
+
+/* =========================================================
+   HEADER / TOOLBAR
+========================================================= */
+header{
+  background: linear-gradient(90deg, var(--blue-900), var(--blue-800));
+  color:#fff; padding:12px 16px; position:sticky; top:0; z-index:50;
+  border-bottom:3px solid var(--goldenrod);
+}
+header .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+h1{ font-size:20px; margin:0; font-weight:700; letter-spacing:.3px }
+.chip{ display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.08); padding:6px 10px; border-radius:999px; font-size:12px }
+
+/* Distribución del header con logo a la derecha */
+header .row{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:12px; flex-wrap:wrap;
+}
+header .row-left{
+  display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+}
+header .row-right{ margin-left:auto; flex:0 0 auto; }
+
+/* Logo en el header: más grande y visible sobre fondo oscuro */
+.brand-logo{
+  height: 40px;           /* <<< tamaño base (subilo/bajalo a gusto) */
+  width: auto;
+  display: block;
+  object-fit: contain;
+}
+
+.brand-logo{
+  position: relative;
+  top: 40px;   /* ajustá: 2–12px */
+}
+
+/* Un poco más grande en pantallas anchas */
+@media (min-width:900px){
+  .brand-logo{ height: 48px; }  /* ajustá 44–56px según te guste */
+}
+
+@media (min-width:900px){
+  .brand-logo{ height:60px; }
+}
+
+
+.toolbar{ display:flex; gap:8px; flex-wrap:wrap; margin-top:8px }
+.toolbar .group{ display:flex; gap:8px; align-items:center }
+
+select, input[type="text"], input[type="date"], textarea{
+  border:1px solid var(--border); border-radius:10px; background:#fff;
+  padding:8px 10px; font-size:14px; outline:none;
+}
+button{
+  cursor:pointer; border:none; border-radius:10px; padding:8px 12px; font-weight:600;
+  background:#fff; border:1px solid var(--border);
+  display:inline-flex; align-items:center; gap:8px;
+  transition:.15s transform ease, .15s background ease;
+}
+button:hover{ background:#fafafa }
+.btn-primary{ background:var(--goldenrod); border-color:var(--goldenrod-700); color:#1a1a1a }
+.btn-primary:hover{ background:var(--goldenrod-700); color:#fff }
+.btn-outline{ background:transparent; color:#fff; border-color:#ffffff33 }
+.btn-outline:hover{ background:#ffffff22 }
+.btn-danger{ background:#fff0f0; color:#b42318; border-color:#ffced0 }
+
+/* =========================================================
+   LAYOUT PRINCIPAL
+========================================================= */
+main{ padding:20px; max-width:var(--container-max); margin:0 auto }
+.banner{ background:#fff; border:1px dashed var(--border); border-left:4px solid var(--goldenrod); padding:10px 12px; border-radius:12px; color:#333; margin:8px 0 }
+
+.grid{ display:grid; gap:10px; grid-template-columns:1fr; align-items:start }
+@media (min-width:900px){ .grid{ grid-template-columns: repeat(4, 1fr) } }
+
+/* Columnas por categoría */
+.col{
+  background:var(--card); border:1px solid var(--border); border-radius:14px;
+  overflow:hidden; min-height:180px; display:flex; flex-direction:column; position:relative;
+}
+.col.drag-over{ outline:2px dashed var(--goldenrod); outline-offset:-6px }
+.col-header{
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 18px 10px 28px; border-bottom:1px solid var(--border); font-weight:700; position:relative;
+}
+.col-header .right{ display:flex; align-items:center; gap:10px }
+.col-header .count{ font-size:12px; color:#555; background:#f3f4f6; border:1px solid #e5e7eb; padding:2px 8px; border-radius:999px }
+.col-body{ flex:1; padding:14px; display:flex; flex-direction:column; gap:8px }
+
+/* Acento vertical (categoría + tarjeta) */
+.col-header::before{ content:""; position:absolute; left:10px; top:12px; bottom:12px; width:4px; border-radius:4px; background:transparent }
+.card.accent::before{ content:""; position:absolute; left:calc(var(--rail-w) + var(--rail-gap)); top:8px; bottom:8px; width:4px; border-radius:4px; background:transparent }
+.col[data-cat="Importantes"] .col-header .title{ color:#7a5b0a }
+.col[data-cat="Importantes"] .col-header::before,
+.col[data-cat="Importantes"] .card.accent::before{ background:var(--cat-importantes) }
+.col[data-cat="Directivas"] .col-header .title{ color:#1d4ed8 }
+.col[data-cat="Directivas"] .col-header::before,
+.col[data-cat="Directivas"] .card.accent::before{ background:var(--cat-directivas) }
+.col[data-cat="Pendiente"] .col-header .title{ color:#92400e }
+.col[data-cat="Pendiente"] .col-header::before,
+.col[data-cat="Pendiente"] .card.accent::before{ background:var(--cat-pendiente) }
+.col[data-cat="Informativo"] .col-header .title{ color:#334155 }
+.col[data-cat="Informativo"] .col-header::before,
+.col[data-cat="Informativo"] .card.accent::before{ background:var(--cat-informativo) }
+
+/* =========================================================
+   TARJETAS (vista “compacta” como default)
+========================================================= */
+.card{
+  background:#fff; border:1px solid var(--border); border-radius:12px;
+  padding:8px 10px 8px 16px;
+  display:grid; grid-template-columns:var(--rail-w) 1fr; gap:10px;
+  box-shadow:0 1px 1px rgba(0,0,0,.04); position:relative;
+}
+.card[draggable="true"]{ cursor:grab }
+.card .card-main{ grid-column:2; display:flex; flex-direction:column; gap:var(--card-vgap); padding-left:6px } /* separa del acento */
+.card-title{ font-weight:700; font-size:13px; line-height:1.35; margin:2px 0 0 }
+.card-detail{ color:#374151; white-space:pre-wrap; line-height:1.45; margin:0 }
+.card-meta{ display:flex; flex-wrap:wrap; gap:var(--meta-gap); row-gap:6px; color:#555; font-size:11px; align-items:center }
+
+.badge{ display:inline-flex; align-items:center; gap:6px; padding:2px 9px; border-radius:999px; border:1px solid var(--border); background:#fafafa; font-weight:600 }
+.badge.resuelta{ background:#ecfdf5; border-color:#bbf7d0; color:#166534 }
+
+.card-actions{ margin-top:4px; display:flex; gap:6px; flex-wrap:wrap }
+.icon-btn{ background:#f8fafc; border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:12px }
+.icon-btn:hover{ background:#f1f5f9 }
+.icon-btn.icon-only{ width:26px; height:26px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:8px }
+.icon-btn.icon-only i{ font-size:12px }
+
+/* Rail de acciones a la izquierda */
+.card .rail-left{
+  grid-column:1; display:flex; flex-direction:column; gap:6px; align-items:center;
+  padding:8px 4px; transform:translateX(var(--rail-shift));
+}
+.rail-left .icon-btn{ width:22px; height:22px; padding:0; display:inline-flex; align-items:center; justify-content:center; border-radius:8px }
+.rail-left .icon-btn i{ font-size:12px }
+
+/* Evitar desbordes de texto */
+.card, .card-title, .card-detail, .badge, .col-header .title{
+  overflow-wrap:anywhere; word-break:break-word;
+}
+
+/* =========================================================
+   FORM RÁPIDO
+========================================================= */
+.form{
+  background:#fff; border:1px solid var(--border); border-radius:14px;
+  padding:12px; display:grid; grid-template-columns:1fr; gap:10px; margin:12px 0;
+}
+.form .row{ display:grid; grid-template-columns:160px 1fr 220px 140px; gap:10px }
+@media (max-width:900px){ .form .row{ grid-template-columns:1fr } }
+.form textarea{ min-height:60px; resize:vertical }
+
+/* Leyenda categorías */
+.legend{ display:flex; gap:8px; flex-wrap:wrap; font-size:12px; color:#555; padding:4px 0 0 }
+.dot{ width:10px; height:10px; border-radius:999px; display:inline-block }
+
+/* =========================================================
+   MODO EDICIÓN (sheet)
+========================================================= */
+.card.editing{
+  padding:0; border-color:var(--goldenrod-700);
+  box-shadow:0 8px 24px rgba(0,0,0,.12); position:relative; z-index:5;
+}
+.card.editing .edit-sheet{
+  grid-column:2; display:grid; gap:10px; padding:14px 18px 12px; background:#fff;
+}
+.card.editing .edit-header{
+  display:flex; align-items:center; justify-content:space-between;
+  font-weight:700; font-size:14px; color:#334155; margin-bottom:2px;
+}
+.card.editing .edit-title{ font-size:15px; font-weight:700 }
+.card.editing .edit-grid{ display:grid; gap:8px; grid-template-columns:1fr }  /* 1 columna (sin prioridad) */
+.card.editing input[type="text"], .card.editing select, .card.editing textarea{ width:100%; min-width:0; font-size:14px }
+.card.editing .edit-actions{
+  position:sticky; bottom:-8px; display:flex; justify-content:flex-end; gap:8px;
+  padding-top:8px; margin-top:2px; background:linear-gradient(180deg, transparent, #fff 40%, #fff);
+}
+.card.editing textarea{ min-height:180px; max-height:60vh; overflow:auto; resize:vertical; line-height:1.45 }
+
+/* Ocultar campo "Nombre" en modales */
+#campaignModal label:has(#mNombre), #campaignFallback label:has(#fmNombre){ display:none !important }
+
+/* =========================================================
+   DIALOG (fallback)
+========================================================= */
+dialog::backdrop{ background: rgba(0,0,0,.35) }
+dialog[open]{ border:1px solid var(--border); border-radius:12px; padding:12px }
+.dialog-fallback{ position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.35); z-index:9999 }
+.dialog-fallback[open]{ display:grid }
+.dialog-panel{ background:#fff; border:1px solid var(--border); border-radius:12px; padding:14px; width:min(92vw, 520px) }
+
+/* ==== Confirm Delete: centrado, visible y sobre todo ==== */
+#confirmDeleteModal[open]{
+  display:block;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:14px;
+  width:min(92vw, 520px);
+  max-width:520px;
+
+  position:fixed;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  z-index: 10000; /* por encima de HUD/otros */
+}
+#confirmDeleteModal::backdrop{
+  background: rgba(0,0,0,.35);
+}
+
+
+/* =========================================================
+   PRESENTACIÓN — NUEVO (ancho único, centrado, sin solaparse)
+========================================================= */
+body.presentation{ background:var(--blue-900); color:#e5e7eb }
+
+/* oculto controles de edición en presentación */
+body.presentation header,
+body.presentation .form,
+body.presentation .toolbar,
+body.presentation #closedBanner,
+body.presentation .card-actions{ display:none !important }
+
+/* HUD */
+.present-hud{
+  position:fixed; top:12px; right:12px; z-index:1000;
+  background:rgba(15,23,42,.95); color:#fff; padding:8px 12px; border-radius:999px;
+  display:none; align-items:center; gap:12px; border:1px solid #334155; pointer-events:auto
+}
+.present-hud.show{ display:flex }
+
+/* Encabezado de campaña (mismo ancho que el contenido, centrado) */
+.present-header{ display:none }
+body.presentation .present-header{
+  display:block;
+  max-width:var(--present-page);
+  width:100%;
+  margin:8px auto 10px;
+  padding:6px 12px;
+  padding-right:calc(12px + var(--hud-space)); /* deja canal p/ HUD */
+  background:var(--goldenrod);
+  border:1px solid var(--goldenrod-700);
+  color:#1a1a1a;
+  border-radius:10px;
+  position:sticky; top:8px; z-index:30;
+  box-sizing:border-box;
+}
+body.presentation .present-header h2{ font-size:15px; margin:0 0 2px 0; line-height:1.2 }
+body.presentation .present-header .sub{ font-size:12px; line-height:1.25 }
+
+/* Contenedor del board = EXACTAMENTE el mismo ancho y padding */
+body.presentation .grid{
+  grid-template-columns:1fr !important;
+  max-width:var(--present-page);
+  width:100%;
+  margin:0 auto;
+  gap:14px !important;
+  padding-left:12px;
+  padding-right:calc(12px + var(--hud-space));
+  box-sizing:border-box;
+}
+body.presentation .col{
+  background:#fff; border-color:#e5e7eb; overflow:visible;
+  scroll-margin-top:calc(var(--present-head-h) + 12px);
+}
+body.presentation .col-header{
+  position:sticky; top:calc(var(--present-head-h) + 6px);
+  background:#fff; color:#0b0f14; padding:8px 16px 8px 24px;
+  font-size:16px; z-index:5; border-bottom-color:#e5e7eb;
+  border-top-left-radius:14px; border-top-right-radius:14px;
+}
+body.presentation .col-body{ align-items:stretch; padding:10px 0 14px 0 !important }
+
+/* Tarjetas (sin rail, 100% del ancho útil, tipografía compacta) */
+body.presentation .rail-left{ display:none !important }
+body.presentation .card{
+  display:block !important;
+  width:100% !important;
+  margin:0 0 12px 0 !important;
+  padding:14px 20px 14px 36px !important;
+  font-size:16px !important; line-height:1.45 !important;
+  color:#0b0f14; background:#fff; border-color:#e5e7eb;
+}
+body.presentation .card.accent::before{
+  left:16px !important; top:10px !important; bottom:10px !important; border-radius:4px !important
+}
+body.presentation .card-title{ font-size:16px !important; font-weight:800 !important; margin:0 0 6px 0 !important }
+body.presentation .card-detail{ margin:0 0 8px 0 !important; color:#374151 !important }
+body.presentation .card-meta{ display:flex !important; flex-wrap:wrap !important; align-items:center !important; gap:8px !important; font-size:12.5px !important }
+
+/* Responsive HUD space: en pantallas angostas NO se reserva canal */
+@media (max-width:1024px){
+  :root{ --hud-space:0px }
+  body.presentation .present-header{ padding-right:12px }
+  body.presentation .grid{ padding-right:12px }
+}
+
+/* =========================================================
+   PRINT — único
+========================================================= */
+.print-cover{ display:none }
+@media print{
+  @page{ size:A4; margin:16mm 14mm }
+
+  header, .form, .toolbar, .search, .btns-print-hide, .present-hud{ display:none !important }
+  body{ background:#fff }
+  main{ max-width:none }
+  .col, .card{ break-inside:avoid; page-break-inside:avoid }
+  .col-header{ background:#fff; -webkit-print-color-adjust:exact; print-color-adjust:exact }
+
+  /* Portada */
+  .print-cover{
+    display:block; page-break-after:always; -webkit-print-color-adjust:exact; print-color-adjust:exact;
+    background:#fff; color:#0b0f14; padding:24mm 18mm;
+    border:1px solid #e5e7eb; border-left:6mm solid var(--goldenrod); border-radius:10px;
+    margin:10px auto 16px; max-width:1200px;
+  }
+  .cover-head{ display:flex; align-items:baseline; justify-content:space-between; margin:0 0 6mm 0 }
+  .cover-head .brand{ font-weight:800; letter-spacing:.3px; font-size:11pt; color:#334155 }
+  .cover-head .date{ font-size:10pt; color:#64748b }
+  .cover-title{ font-size:22pt; font-weight:900; margin:0 0 6mm 0 }
+
+  .cover-meta{ display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin:0 0 8mm 0 }
+  .meta-row{
+    display:flex; justify-content:space-between; gap:6mm;
+    background:#f8fafc; border:1px solid #e5e7eb; border-radius:6px; padding:4mm 5mm;
+  }
+  .meta-row span{ color:#475569; font-weight:600 }
+  .meta-row strong{ color:#0b0f14 }
+
+  /* Operadores en dos columnas */
+  .meta-row.meta-ops{ grid-column:1 / -1; align-items:flex-start }
+  .meta-row.meta-ops span{ margin-top:1mm }
+  .meta-row.meta-ops .ops-two-cols{ display:grid; grid-template-columns:1fr 1fr; gap:6mm; width:100% }
+  .meta-row.meta-ops .ops-col em{
+    display:block; font-style:normal; font-weight:600; color:#475569; margin-bottom:2mm;
+  }
+  .meta-row.meta-ops .ops-col strong{
+    display:block; white-space:pre-line; line-height:1.35; color:#0b0f14; word-break:break-word;
+  }
+
+  .section-title{ font-size:12pt; font-weight:800; color:#334155; margin:0 0 4mm 0 }
+
+  /* Totales por categoría (solo total) */
+  .cover-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px }
+  .cover-card{ background:#fff; border:1px solid #e5e7eb; border-radius:12px; padding:10px }
+  .cover-card h4{ margin:0 0 6px; font-size:14px }
+  .cover-card .small{ font-size:12px; color:#334155 }
+
+  /* Pie con numeración */
+  .print-footer{ display:block; position:fixed; right:14mm; bottom:10mm; font-size:11px; color:#475569 }
+  .print-footer::after{ content:"Página " counter(page) }
+}
+
+/* ===== PRESENTACIÓN SIN CABECERA ===== */
+body.presentation .present-header{ display:none !important; }
+
+/* Contenedor de novedades centrado y con canal para el HUD */
+body.presentation .grid{
+  grid-template-columns: 1fr !important;
+  max-width: var(--present-page);
+  width: 100%;
+  margin: 0 auto;
+  gap: 14px !important;
+  padding-left: 12px;
+  padding-right: calc(12px + var(--hud-space));
+  box-sizing: border-box;
+}
+
+/* Columnas y tarjetas igual que antes */
+body.presentation .col{
+  background:#fff; border-color:#e5e7eb; overflow:visible;
+  scroll-margin-top: 20px;  /* margen cómodo al navegar por categorías */
+}
+
+/* Títulos de categoría pegajosos (ya no dependen del header dorado) */
+body.presentation .col-header{
+  position: sticky;
+  top: 12px;                 /* despega del borde superior */
+  background:#fff; color:#0b0f14;
+  padding: 8px 16px 8px 24px;
+  font-size: 16px; z-index: 5; border-bottom-color:#e5e7eb;
+  border-top-left-radius:14px; border-top-right-radius:14px;
+}
+
+/* Tarjetas a 100% del ancho útil (sin rail) */
+body.presentation .rail-left{ display:none !important }
+body.presentation .card{
+  display:block !important; width:100% !important; margin:0 0 12px 0 !important;
+  padding:14px 20px 14px 36px !important; font-size:16px !important; line-height:1.45 !important;
+  color:#0b0f14; background:#fff; border-color:#e5e7eb;
+}
+body.presentation .card.accent::before{ left:16px !important; top:10px !important; bottom:10px !important; border-radius:4px !important }
+body.presentation .card-title{ font-size:16px !important; font-weight:800 !important; margin:0 0 6px 0 !important }
+body.presentation .card-detail{ margin:0 0 8px 0 !important; color:#374151 !important }
+body.presentation .card-meta{ display:flex !important; flex-wrap:wrap !important; align-items:center !important; gap:8px !important; font-size:12.5px !important }
+
+/* En pantallas angostas no reservamos canal para el HUD */
+@media (max-width:1024px){
+  :root{ --hud-space:0px }
+  body.presentation .grid{ padding-right:12px }
+}
+
+/* === PRESENTACIÓN: contenedor centrado === */
+:root{
+  --present-page: 1220px;   /* ajustá 1100–1400 a gusto */
+}
+
+/* si decidiste ocultar el bloque del título en presentación */
+body.presentation .present-header{ display:none !important; }
+
+/* el grid de categorías (la “hoja” blanca) centrado y sin hueco del HUD */
+body.presentation .grid{
+  grid-template-columns: 1fr !important;
+  max-width: var(--present-page);
+  margin-left: auto !important;
+  margin-right: auto !important;
+  padding-left: 12px !important;
+  padding-right: 12px !important;   /* quita la reserva del HUD si la había */
+}
+
+/* que cada tarjeta ocupe el ancho útil del contenedor */
+body.presentation .col-body{ padding: 10px 0 14px 0 !important; }
+body.presentation .card{
+  display: block !important;
+  width: 100% !important;
+  margin: 0 0 12px 0 !important;
+  padding: 14px 20px 14px 36px !important; /* sangría cómoda */
+}
+
+/* A) Micro-elevación en hover (no en presentación ni cuando está editando) */
+.card{
+  transition: box-shadow .15s ease, transform .15s ease;
+  will-change: transform;
+}
+body:not(.presentation) .card:not(.editing):hover{
+  box-shadow: 0 4px 14px rgba(0,0,0,.06);
+  transform: translateY(-1px);
+}
+
+/* A) Micro-elevación en hover (no en presentación ni cuando está editando) */
+.card{
+  transition: box-shadow .15s ease, transform .15s ease;
+  will-change: transform;
+}
+body:not(.presentation) .card:not(.editing):hover{
+  box-shadow: 0 4px 14px rgba(0,0,0,.06);
+  transform: translateY(-1px);
+}
+
+/* C) Tira de color más delgada y texto con mejor sangría */
+.card.accent::before{ width: 3px; }    /* antes 4px */
+.card .card-main{ padding-left: 8px; } /* antes 6px */
+
+/* D) Hover/feedback sutil en rail de acciones */
+.rail-left .icon-btn{
+  transition: background .12s ease, border-color .12s ease;
+}
+.rail-left .icon-btn:hover{
+  background:#eef2f7;
+  border-color:#e3e8ef;
+}
+
+/* E) Drag-over de columnas con feedback visual agradable */
+.col.drag-over{
+  outline: 2px dashed var(--goldenrod);
+  outline-offset: -6px;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    linear-gradient(90deg, #fff7e0, #ffffff) border-box; /* leve glow dorado */
+  border: 1px solid transparent; /* para que se vea el gradient del border-box */
+}
+
+/* 1) Superficies y líneas más suaves */
+:root{
+  --surface-1: #f8fafc;   /* columnas */
+  --surface-2: #ffffff;   /* tarjetas */
+  --line:      #e6eaf0;   /* bordes suaves */
+}
+
+.col{
+  background: var(--surface-1) !important;
+  border-color: var(--line) !important;
+  box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(0,0,0,.02);
+}
+.card{
+  background: var(--surface-2) !important;
+  border-color: var(--line) !important;
+}
+.col-body{ background: transparent; }
+
+/* 2) Header con tinte sutil por categoría */
+.col[data-cat="Importantes"] .col-header{
+  background: linear-gradient(90deg, rgba(218,165,32,.06), transparent 50%);
+}
+.col[data-cat="Directivas"] .col-header{
+  background: linear-gradient(90deg, rgba(59,130,246,.06), transparent 50%);
+}
+.col[data-cat="Pendiente"] .col-header{
+  background: linear-gradient(90deg, rgba(245,158,11,.06), transparent 50%);
+}
+.col[data-cat="Informativo"] .col-header{
+  background: linear-gradient(90deg, rgba(107,114,128,.06), transparent 50%);
+}
+
+/* 3) Chips con mejor contraste */
+.badge{
+  background:#f1f5f9 !important;  /* antes #fafafa */
+  border-color:#e2e8f0 !important; /* línea más definida */
+}
+/* La de resuelta se mantiene verde suave (ya estaba bien) */
+
+/* 4) Micro-elevación en hover (solo fuera de presentación/edición) */
+.card{
+  transition: box-shadow .15s ease, transform .15s ease;
+  will-change: transform;
+}
+body:not(.presentation) .card:not(.editing):hover{
+  box-shadow: 0 6px 18px rgba(2,6,23,.06);
+  transform: translateY(-1px);
+}
+
+/* Placeholder cuando no hay tarjetas en una columna */
+.empty-col{
+  display:flex; align-items:center; justify-content:center;
+  gap:8px;
+  padding:12px;
+  background:#f8fafc;
+  border:1px dashed var(--border);
+  color:#64748b;
+  border-radius:10px;
+  font-size:13px;
+  text-align:center;
+  min-height:56px;
+}
+.empty-col i{ font-size:14px; opacity:.85 }
+
+/* En modo presentación, tono un poquito más marcado */
+body.presentation .empty-col{
+  background:#f1f5f9;
+  border-color:#e2e8f0;
+  color:#475569;
+}
+
+/* Transiciones suaves en tarjetas */
+.card{
+  transition: box-shadow .15s ease, border-color .15s ease, background-color .15s ease;
+}
+
+/* Hover: bordecito + sombra leve (sin “saltar” la tarjeta) */
+.card:hover{
+  border-color:#cbd5e1;                /* slate-300 */
+  box-shadow: 0 4px 12px rgba(0,0,0,.06);
+  background:#ffffff;
+}
+
+/* Focus visible (tecla TAB): anillo accesible */
+.card:focus-visible{
+  outline: 2px solid var(--goldenrod);
+  outline-offset: 2px;
+}
+
+/* Evitar efectos durante drag */
+.card.dragging, .card:active{
+  box-shadow:none;
+}
+
+/* Logo fijo en la esquina inferior derecha */
+.corner-logo{
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 50px;           /* ajustá el tamaño acá */
+  height: auto;
+  z-index: 1200;          /* por encima del contenido */
+  pointer-events: none;   /* no tapa clics */
+  opacity: .95;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.25)); /* contraste sobre fondo */
+}
+
+/* versión compacta en pantallas chicas */
+@media (max-width: 640px){
+  .corner-logo{
+    right: 10px;
+    bottom: 10px;
+    width: 96px;
+  }
+}
+
+/* ocultar en impresión */
+@media print{
+  .corner-logo{ display:none }
+}
+
+/* Si querés que SOLO aparezca en modo presentación, descomentá esta línea: */
+/* body:not(.presentation) .corner-logo{ display:none !important; } */
+
+.att-list{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px }
+.att{ font-size:12px; border:1px solid var(--border); padding:4px 8px; border-radius:8px; background:#f8fafc }
+.att i{ margin-right:6px }
+.att-img{ border:none; padding:0 }
+.att-img img{ max-width:120px; max-height:90px; border:1px solid var(--border); border-radius:8px; display:block }
+
+
+</style>
+</head>
+<body>
+  <header>
+<div class="row">
+  <div class="row-left">
+    <h1>Reporte de campaña SCC</h1>
+    <span class="chip"><i class="fa-solid fa-shield-halved"></i> Security Control Center</span>
+    <span class="chip" id="campaignStateChip">—</span>
+  </div>
+</div>
+    <div class="toolbar">
+      <div class="group">
+        <label class="muted">Campaña</label>
+        <select id="campaignSelect"></select>
+        <button class="btn-outline" id="btnNewCampaign"><i class="fa-solid fa-plus"></i> Nueva</button>
+        <button class="btn-outline" id="btnEditCampaign"><i class="fa-solid fa-pen-to-square"></i> Editar</button>
+        <button class="btn-outline" id="btnToggleClose"><i class="fa-solid fa-lock"></i> Cerrar</button>
+      </div>
+      <div class="group group-extra">
+        <button class="btn-outline" id="btnDemo"><i class="fa-solid fa-wand-magic-sparkles"></i> Cargar demo</button>
+        <button class="btn-outline" id="btnPresentation"><i class="fa-solid fa-display"></i> Modo presentación</button>
+      </div>
+      <div class="group group-extra">
+        <input type="file" id="fileImport" accept="application/json" style="display:none"/>
+        <button class="btn-primary" id="btnPrint"><i class="fa-solid fa-file-pdf"></i> Exportar PDF</button>
+        <button class="btn-outline btn-danger" id="btnDeleteCampaign"><i class="fa-solid fa-trash"></i> Eliminar</button>
+      </div>
+    </div>
+    <div class="legend">
+      <span><span class="dot" style="background:var(--cat-importantes)"></span> Importantes</span>
+      <span><span class="dot" style="background:var(--cat-directivas)"></span> Directivas</span>
+      <span><span class="dot" style="background:var(--cat-pendiente)"></span> Pendiente</span>
+      <span><span class="dot" style="background:var(--cat-informativo)"></span> Informativo</span>
+      <span id="dateRange" class="pill" title="Rango de la campaña">—</span>
+    </div>
+  </header>
+
+  <!-- Portada sólo para impresión -->
+  <div id="printCover" class="print-cover" aria-hidden="true"></div>
+
+  <main>
+    <div id="closedBanner" class="banner" style="display:none"><strong>Campaña cerrada:</strong> la edición está bloqueada. Podés reabrirla desde el botón <em>Reabrir</em> en la barra superior.</div>
+
+    <div class="form" id="quickForm">
+      <div class="row">
+        <select id="fCategoria">
+          <option>Importantes</option>
+          <option>Directivas</option>
+          <option>Pendiente</option>
+          <option>Informativo</option>
+        </select>
+        <input id="fTitulo" type="text" placeholder="Título (obligatorio)" />
+        <input id="fResponsable" type="text" placeholder="Responsable / Sector" />
+        <button id="btnAgregar" class="btn-primary" type="button"><i class="fa-solid fa-plus"></i> Agregar</button>
+      </div>
+      <textarea id="fDetalle" placeholder="Detalle (opcional). Sugerencia: incluir números de incidente, guardia, ubicación, enlaces, etc."></textarea>
+      <div class="search">
+        <input id="fBuscar" type="text" placeholder="Buscar en todas las novedades... (Ctrl/Cmd + K)" style="width:100%" />
+      </div>
+    </div>
+
+    <div id="presentHeader" class="present-header"></div>
+
+    <section class="grid" id="board"></section>
+  </main>
+
+<div id="presentHud" class="present-hud btns-print-hide">
+  <button id="btnPrevCat" class="icon-btn" type="button" title="Categoría anterior (←)"><i class="fa-solid fa-arrow-left"></i></button>
+  <strong id="presentCatName">—</strong>
+  <button id="btnNextCat" class="icon-btn" type="button" title="Siguiente categoría (→)"><i class="fa-solid fa-arrow-right"></i></button>
+  <button id="btnExitPresentation" class="icon-btn" type="button" title="Salir (Esc)"><i class="fa-solid fa-xmark"></i> Salir</button>
+</div>
+
+<!-- CONFIRMAR ELIMINACIÓN (FUERA de campaignModal) -->
+<dialog id="confirmDeleteModal">
+  <form method="dialog" id="confirmDeleteForm" style="min-width:320px">
+    <h3 style="margin:0 0 10px 0">Eliminar campaña</h3>
+    <p style="margin:0 0 8px 0; color:#334155">
+      Vas a eliminar la campaña <strong id="cdText">—</strong>. Esta acción no se puede deshacer.
+    </p>
+    <label style="display:block; margin:8px 0 6px 0; font-size:13px; color:#475569">
+      Escribí <strong>ELIMINAR</strong> para confirmar:
+      <input id="cdInput" type="text" autocomplete="off"
+             style="width:100%; margin-top:6px; border:1px solid var(--border); border-radius:10px; padding:8px 10px">
+    </label>
+    <div id="cdError" style="display:none; color:#b42318; font-size:12px; margin:4px 0 8px 0">
+      Tenés que escribir exactamente <strong>ELIMINAR</strong>.
+    </div>
+    <menu style="display:flex; justify-content:flex-end; gap:8px; margin:10px 0 0">
+      <button id="cdCancel" type="button">Cancelar</button>
+      <button id="cdConfirm" class="btn-danger" value="default" type="submit">
+        <i class="fa-solid fa-trash"></i> Eliminar
+      </button>
+    </menu>
+  </form>
+</dialog>
+
+
+  <!-- Modal Nueva/Editar Campaña (dialog + fallback) -->
+  <dialog id="campaignModal">
+    <form method="dialog" id="campaignForm" style="min-width: 320px">
+      <h3 id="mTitle" style="margin:0 0 10px 0">Nueva campaña</h3>
+      <p class="muted" style="margin:0 0 12px 0">Se crea con 14 días por defecto. Podés ajustar las fechas y datos de briefing.</p>
+      <div style="display:grid; gap:8px">
+        <label>Nombre
+          <input id="mNombre" type="text" required>
+        </label>
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+          <label>Inicio
+            <input id="mInicio" type="date" required>
+          </label>
+          <label>Fin
+            <input id="mFin" type="date" required>
+          </label>
+        </div>
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+          <label>Guardia saliente
+            <input id="mGS" type="text" placeholder="p.ej. Guardia A">
+          </label>
+          <label>Guardia entrante
+            <input id="mGE" type="text" placeholder="p.ej. Guardia B">
+          </label>
+        </div>
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+          <label>Supervisor/a 1
+            <input id="mSup1" type="text" placeholder="Nombre y apellido">
+          </label>
+          <label>Supervisor/a 2 (opcional)
+            <input id="mSup2" type="text" placeholder="Nombre y apellido">
+          </label>
+        </div>
+
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+  <label>Operadores (turno día)
+    <textarea id="mOpsDia" rows="3" placeholder="uno por línea"></textarea>
+  </label>
+  <label>Operadores (turno noche)
+    <textarea id="mOpsNoche" rows="3" placeholder="uno por línea"></textarea>
+  </label>
+</div>
+
+        <menu style="display:flex; justify-content:flex-end; gap:8px; margin:8px 0 0">
+          <button value="cancel" type="button" id="mCancel">Cancelar</button>
+          <button class="btn-primary" id="mSave" value="default" type="submit"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+        </menu>
+      </div>
+    </form>
+  </dialog>
+  <div class="dialog-fallback" id="campaignFallback">
+    <div class="dialog-panel">
+      <h3 id="fmTitle" style="margin:0 0 10px 0">Nueva campaña</h3>
+      <p class="muted" style="margin:0 0 12px 0">Se crea con 14 días por defecto. Podés ajustar las fechas y datos de briefing.</p>
+      <div style="display:grid; gap:8px">
+        <label>Nombre
+          <input id="fmNombre" type="text" required>
+        </label>
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+          <label>Inicio
+            <input id="fmInicio" type="date" required>
+          </label>
+          <label>Fin
+            <input id="fmFin" type="date" required>
+          </label>
+        </div>
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+          <label>Guardia saliente
+            <input id="fmGS" type="text" placeholder="p.ej. Guardia A">
+          </label>
+          <label>Guardia entrante
+            <input id="fmGE" type="text" placeholder="p.ej. Guardia B">
+          </label>
+        </div>
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+          <label>Supervisor/a 1
+            <input id="fmSup1" type="text" placeholder="Nombre y apellido">
+          </label>
+          <label>Supervisor/a 2 (opcional)
+            <input id="fmSup2" type="text" placeholder="Nombre y apellido">
+          </label>
+        </div>
+
+        <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+  <label>Operadores (turno día)
+    <textarea id="fmOpsDia" rows="3" placeholder="uno por línea"></textarea>
+  </label>
+  <label>Operadores (turno noche)
+    <textarea id="fmOpsNoche" rows="3" placeholder="uno por línea"></textarea>
+  </label>
+</div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin:8px 0 0">
+          <button id="fmCancel">Cancelar</button>
+          <button class="btn-primary" id="fmSave"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <img src="img/newmont-logo.png" alt="Newmont" class="corner-logo">
+
+  <script>
+
+    // ===== Supabase: config =====
+const SUPABASE_URL = 'https://ixzpjcuuvorndkgphtue.supabase.co';   // Settings > API > Project URL
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enBqY3V1dm9ybmRrZ3BodHVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU1MzgzMjcsImV4cCI6MjA3MTExNDMyN30.m5t7dnPUpNygn0VD4NccsZsUcNoxJJXKnMUkspHNpp8';                    // Settings > API > anon public
+const BOARD_SLUG = 'scc-reporte-publico';
+const BUCKET = 'scc-uploads';
+
+const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // ====== Storage y Estado ======
+    const STORAGE_KEY = 'scc-pase-novedades-v1';
+    const CATEGORIES = ["Importantes","Directivas","Pendiente","Informativo"];
+
+    const els = {
+      campaignSelect: document.getElementById('campaignSelect'),
+      btnNewCampaign: document.getElementById('btnNewCampaign'),
+      btnEditCampaign: document.getElementById('btnEditCampaign'),
+      btnToggleClose: document.getElementById('btnToggleClose'),
+      btnDemo: document.getElementById('btnDemo'),
+      btnPrint: document.getElementById('btnPrint'),
+      btnPresentation: document.getElementById('btnPresentation'),
+
+      dateRange: document.getElementById('dateRange'),
+      board: document.getElementById('board'),
+      closedBanner: document.getElementById('closedBanner'),
+      quickForm: document.getElementById('quickForm'),
+      fCategoria: document.getElementById('fCategoria'),
+      fTitulo: document.getElementById('fTitulo'),
+      fResponsable: document.getElementById('fResponsable'),
+      fDetalle: document.getElementById('fDetalle'),
+      fBuscar: document.getElementById('fBuscar'),
+      btnAgregar: document.getElementById('btnAgregar'),
+      campaignStateChip: document.getElementById('campaignStateChip'),
+
+      campaignModal: document.getElementById('campaignModal'),
+      mTitle: document.getElementById('mTitle'),
+      mNombre: document.getElementById('mNombre'),
+      mInicio: document.getElementById('mInicio'),
+      mFin: document.getElementById('mFin'),
+      mGS: document.getElementById('mGS'),
+      mGE: document.getElementById('mGE'),
+      mSup1: document.getElementById('mSup1'),
+      mSup2: document.getElementById('mSup2'),
+        mOpsDia:   document.getElementById('mOpsDia'),
+  mOpsNoche: document.getElementById('mOpsNoche'),
+      mSave: document.getElementById('mSave'),
+      mCancel: document.getElementById('mCancel'),
+
+      btnDeleteCampaign: document.getElementById('btnDeleteCampaign'),
+confirmDeleteModal: document.getElementById('confirmDeleteModal'),
+cdText: document.getElementById('cdText'),
+cdInput: document.getElementById('cdInput'),
+cdError: document.getElementById('cdError'),
+cdCancel: document.getElementById('cdCancel'),
+cdConfirm: document.getElementById('cdConfirm'),
+
+
+      // fallback dialog
+      fb: document.getElementById('campaignFallback'),
+      fmTitle: document.getElementById('fmTitle'),
+      fmNombre: document.getElementById('fmNombre'),
+      fmInicio: document.getElementById('fmInicio'),
+      fmFin: document.getElementById('fmFin'),
+      fmGS: document.getElementById('fmGS'),
+      fmGE: document.getElementById('fmGE'),
+      fmSup1: document.getElementById('fmSup1'),
+      fmSup2: document.getElementById('fmSup2'),
+        fmOpsDia:   document.getElementById('fmOpsDia'),
+  fmOpsNoche: document.getElementById('fmOpsNoche'),
+      fmSave: document.getElementById('fmSave'),
+      fmCancel: document.getElementById('fmCancel'),
+
+      presentHud: document.getElementById('presentHud'),
+      presentHeader: document.getElementById('presentHeader'),
+      btnExitPresentation: document.getElementById('btnExitPresentation'),
+      btnPrevCat: document.getElementById('btnPrevCat'),
+      btnNextCat: document.getElementById('btnNextCat'),
+      presentCatName: document.getElementById('presentCatName'),
+      printCover: document.getElementById('printCover'),
+    };
+
+    let state = load() || { campaigns: [], activeId: null };
+    let searchQuery = '';
+    let presentIndex = 0; // índice de categoría visible
+    let modalMode = 'new'; // 'new' | 'edit'
+
+
+    // ====== Utils ======
+
+function autosizeTextarea(ta){
+  if(!ta) return;
+  ta.style.height = 'auto';
+  const maxPx = Math.round(window.innerHeight * 0.60); // 60vh
+  ta.style.height = Math.min(ta.scrollHeight, maxPx) + 'px';
+}
+window.addEventListener('resize', ()=>{
+  document.querySelectorAll('.card.editing textarea[data-edit="detalle"]').forEach(autosizeTextarea);
+});
+
+
+   function save(){
+  // sigue guardando offline
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  // y guarda en la nube (no necesitamos await acá)
+  saveCloud();}
+    function load(){ try{ return JSON.parse(localStorage.getItem(STORAGE_KEY)); }catch(e){ return null } }
+    function uid(){ return Math.random().toString(36).slice(2)+Date.now().toString(36) }
+    function fmt(d){
+  if(!d) return '—';
+  // Si viene como 'YYYY-MM-DD', mostrá tal cual en dd/mm/yyyy
+  if(typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)){
+    const [y,m,dd] = d.split('-');
+    return `${dd}/${m}/${y}`;
+  }
+  // Para otros casos (timestamps como createdAt), usar locale normal
+  return new Date(d).toLocaleDateString('es-AR');
+}
+
+    function toISODate(d){ const z=new Date(d); z.setMinutes(z.getMinutes()-z.getTimezoneOffset()); return z.toISOString().slice(0,10) }
+    function addDays(iso, days){ const d = new Date(iso); d.setDate(d.getDate()+days); return toISODate(d) }
+    function esc(s){ return (s||'').toString().replace(/[&<>\"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c])) }
+
+    // === Resaltado + Linkify helpers ===
+const TICKET_BASE_URL = ''; // opcional: p.ej. "https://intranet/tickets/"
+
+function escapeRegExp(str){ return str.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+
+// Convierte texto escapado en HTML con links
+function linkifyEscaped(htmlEsc){
+  // URLs
+  htmlEsc = htmlEsc.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+  // Tickets tipo #5812
+  if (TICKET_BASE_URL){
+    htmlEsc = htmlEsc.replace(/#(\d{3,})/g, (m,n)=>`<a href="${TICKET_BASE_URL}${n}" target="_blank" rel="noopener">#${n}</a>`);
+  }else{
+    htmlEsc = htmlEsc.replace(/#(\d{3,})/g, '<span class="ticket">#$1</span>');
+  }
+  return htmlEsc;
+}
+
+// Resalta el query en texto plano, sin tocar etiquetas HTML
+function highlightHTML(html, query){
+  const q = (query||'').trim();
+  if(!q) return html;
+  const parts = q.split(/\s+/).filter(Boolean).map(escapeRegExp);
+  if(!parts.length) return html;
+  const re = new RegExp('(' + parts.join('|') + ')', 'gi');
+  return html.split(/(<[^>]+>)/g).map(chunk=>{
+    if(chunk.startsWith('<')) return chunk;       // no tocar tags
+    return chunk.replace(re, '<mark class="hl">$1</mark>');
+  }).join('');
+}
+
+// Pipeline: escapa -> linkifica -> resalta (según searchQuery global)
+function rich(text){
+  let h = esc(text||'');
+  h = linkifyEscaped(h);
+  h = highlightHTML(h, searchQuery);
+  return h;
+}
+function deleteCampaignById(id){
+  const idx = state.campaigns.findIndex(c=>c.id===id);
+  if(idx < 0) return;
+  state.campaigns.splice(idx, 1);
+  if(state.activeId === id){
+    state.activeId = state.campaigns[0]?.id || null;
+  }
+  save();
+  render();
+}
+
+// ---- Nube: cargar/guardar y tiempo real
+async function loadCloud(){
+  const { data, error } = await supa
+    .from('boards')
+    .select('data')
+    .eq('slug', BOARD_SLUG)
+    .maybeSingle();
+  console.log('[loadCloud]', error || 'ok', !!data);
+  return data?.data || null;
+}
+
+async function saveCloud(){
+  const payload = { slug: BOARD_SLUG, data: state, updated_at: new Date().toISOString() };
+  const { data, error } = await supa
+    .from('boards')
+    .upsert(payload, { onConflict: 'slug' });
+  console.log('[saveCloud]', error || 'ok', data || null);
+  return !error;
+}
+function setupRealtime(){
+  supa
+    .channel('boards-live')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'boards', filter: `slug=eq.${BOARD_SLUG}` },
+      (payload) => {
+        const remote = payload.new?.data;
+        if (!remote) return;
+        // Evitá re-render si es igual
+        const localHash  = JSON.stringify(state);
+        const remoteHash = JSON.stringify(remote);
+        if (remoteHash !== localHash){
+          state = remote;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          render();
+        }
+      }
+    )
+    .subscribe();
+}
+
+    function active(){ return state.campaigns.find(c=>c.id===state.activeId) || null }
+    function ensureCampaign(){ if(!state.campaigns.length){ openCampaignModal('new'); }}
+
+    // ====== Render ======
+    function render(){
+      // select campañas
+els.campaignSelect.innerHTML = state.campaigns
+  .map(c=>`<option value="${c.id}">${fmt(c.inicio)} – ${fmt(c.fin)}</option>`)
+  .join('');
+
+// 👉 Si no hay campaña activa, elegí la primera
+if (!state.activeId && state.campaigns.length){
+  state.activeId = state.campaigns[0].id;
+  save(); // (persiste y también sube a la nube)
+}
+
+// 👉 Si la activa ya no existe, caé a la primera
+if (state.activeId && !state.campaigns.some(c=>c.id === state.activeId) && state.campaigns.length){
+  state.activeId = state.campaigns[0].id;
+  save();
+}
+
+els.campaignSelect.value = state.activeId || '';
+
+
+      const c = active();
+      if(!c){ els.dateRange.textContent='—'; els.board.innerHTML=''; els.campaignStateChip.textContent='Sin campaña'; els.presentHeader.innerHTML=''; els.printCover.innerHTML=''; return }
+
+      els.dateRange.textContent = `${fmt(c.inicio)} – ${fmt(c.fin)}`;
+      els.campaignStateChip.innerHTML = c.cerrada ? '<i class="fa-solid fa-lock"></i> Cerrada' : '<i class="fa-solid fa-unlock"></i> Abierta';
+      els.btnToggleClose.innerHTML = c.cerrada ? '<i class="fa-solid fa-unlock"></i> Reabrir' : '<i class="fa-solid fa-lock"></i> Cerrar';
+      els.closedBanner.style.display = c.cerrada ? 'block' : 'none';
+
+// encabezado de presentación (en pantalla) + portada PDF (profesional, sin semáforo)
+const supsArr = Array.isArray(c.supervisores) ? c.supervisores.filter(Boolean) : [];
+const opsDiaArr   = Array.isArray(c.operadoresDia)   ? c.operadoresDia.filter(Boolean)   : (Array.isArray(c.operadores) ? c.operadores.filter(Boolean) : []);
+const opsNocheArr = Array.isArray(c.operadoresNoche) ? c.operadoresNoche.filter(Boolean) : [];
+const sups = supsArr.length ? supsArr.join(' · ') : '—';
+const gsal = c.guardiaSaliente || '—';
+const gent = c.guardiaEntrante || '—';
+const allOps = [...opsDiaArr, ...opsNocheArr];
+const opsTxt = allOps.length ? ` · Operadores: <strong>${esc(allOps.join(' · '))}</strong>` : '';
+
+els.presentHeader.innerHTML = `
+  <h2>${fmt(c.inicio)} – ${fmt(c.fin)}</h2>
+  <div class="sub">
+    Guardia saliente: <strong>${esc(gsal)}</strong> → entrante:
+    <strong>${esc(gent)}</strong> · Supervisores: <strong>${esc(sups)}</strong>${opsTxt}
+  </div>
+`;
+
+updateDeleteBtn();
+
+const totals = getTotals(c);
+
+els.printCover.innerHTML = `
+  <div class="cover-head">
+    <div class="brand">SCC Newmont</div>
+    <div class="date">${new Date().toLocaleDateString('es-AR')}</div>
+  </div>
+  <h1 class="cover-title">Reporte de campaña SCC</h1>
+
+  <div class="cover-meta">
+    <div class="meta-row"><span>Fechas</span><strong>${fmt(c.inicio)} – ${fmt(c.fin)}</strong></div>
+    <div class="meta-row"><span>Guardias</span><strong>${esc(gsal)} → ${esc(gent)}</strong></div>
+    <div class="meta-row"><span>Supervisores</span><strong>${esc(sups)}</strong></div>
+
+    <!-- Operadores: dos columnas Día/Noche -->
+    <div class="meta-row meta-ops">
+      <span>Operadores</span>
+      <div class="ops-two-cols">
+        <div class="ops-col">
+          <em>Turno día</em>
+          <strong>${opsDiaArr.length ? opsDiaArr.map(esc).join('<br>') : '—'}</strong>
+        </div>
+        <div class="ops-col">
+          <em>Turno noche</em>
+          <strong>${opsNocheArr.length ? opsNocheArr.map(esc).join('<br>') : '—'}</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <h2 class="section-title">Totales por categoría</h2>
+  <div class="cover-grid">
+    ${CATEGORIES.map(cat=>{
+      const t = totals[cat];
+      return `
+      <div class="cover-card">
+        <h4>${cat}</h4>
+        <div class="small">Total: <strong>${t.total}</strong></div>
+      </div>`;
+    }).join('')}
+  </div>
+`;
+
+      // columnas
+      els.board.innerHTML = '';
+      CATEGORIES.forEach(cat=>{
+        const col = document.createElement('div');
+        col.className = 'col';
+        col.dataset.cat = cat;
+        col.innerHTML = `
+          <div class="col-header">
+            <span class="title">${cat}</span>
+            <div class="right">
+              <span class="count" data-count-for="${cat}">0</span>
+            </div>
+          </div>
+          <div class="col-body" data-drop="${cat}"></div>
+        `;
+        els.board.appendChild(col);
+      });
+
+      // items filtrados + ordenado por categoría/prioridad/estado
+      const all = c.items || [];
+      let filtered = all;
+      if(searchQuery){
+        const q = searchQuery.toLowerCase();
+        filtered = all.filter(it=> (it.titulo||'').toLowerCase().includes(q) || (it.detalle||'').toLowerCase().includes(q) || (it.responsable||'').toLowerCase().includes(q));
+      }
+
+    const sortIt = (a,b)=>{
+  if(a.resuelta!==b.resuelta) return a.resuelta?1:-1;
+  return new Date(b.createdAt) - new Date(a.createdAt);
+};
+
+
+CATEGORIES.forEach(cat=>{
+  let group = filtered.filter(it=> it.categoria===cat);
+  group.sort(sortIt);
+  const body = els.board.querySelector(`[data-drop="${cat}"]`);
+  for(const it of group){
+    const card = document.createElement('div');
+    card.className = 'card accent';
+    card.draggable = !c.cerrada && !document.body.classList.contains('presentation');
+    card.dataset.id = it.id;
+    card.innerHTML = viewCardHTML(it);
+
+    /* 👇 foco accesible para estilos de focus */
+    card.tabIndex = 0;
+
+    if(body) body.appendChild(card);
+  }
+      /* 👇 Placeholder si no hay tarjetas (o no hay resultados de búsqueda) */
+  if(body){
+    const hasCards = !!body.querySelector('.card');
+    let empty = body.querySelector('.empty-col');
+    if(!hasCards){
+      const msg = searchQuery
+        ? `Sin resultados en ${cat} para “${esc(searchQuery)}”`
+        : `Sin novedades en ${cat}`;
+      if(!empty){
+        empty = document.createElement('div');
+        empty.className = 'empty-col';
+        empty.innerHTML = `<i class="fa-regular fa-inbox"></i> ${msg}`;
+        body.appendChild(empty);
+      }else{
+        empty.innerHTML = `<i class="fa-regular fa-inbox"></i> ${msg}`;
+      }
+    }else if(empty){
+      empty.remove();
+    }
+  }
+});
+
+
+      // contadores (abiertas) + contador grande
+  CATEGORIES.forEach(cat=>{
+  const abiertas = (all||[]).filter(i=>i.categoria===cat && !i.resuelta).length;
+  const chip = els.board.querySelector(`[data-count-for="${cat}"]`);
+  if(chip) chip.textContent = abiertas;
+});
+
+      // drag & drop
+      bindDnD();
+
+      // bloqueo de edición
+      els.quickForm.style.display = c.cerrada ? 'none' : 'grid';
+      if(c.cerrada){ [...document.querySelectorAll('.icon-btn')].forEach(b=> b.setAttribute('disabled','disabled')) }
+
+      // actualizar HUD y offsets de presentación
+      if(document.body.classList.contains('presentation')){
+  els.presentCatName.textContent = CATEGORIES[presentIndex] || '—';
+  setTimeout(()=> { updatePresentOffsets(); scrollToPresentCat(false); }, 50);
+}
+
+    }
+
+function viewCardHTML(it){
+  const toggleTitle = it.resuelta ? 'Marcar abierta' : 'Marcar resuelta';
+  const toggleIcon  = it.resuelta ? 'fa-rotate-left' : 'fa-check';
+  return `
+    <div class="rail-left btns-print-hide">
+      <button class="icon-btn icon-only" data-act="toggle" type="button" title="${toggleTitle}" aria-label="${toggleTitle}">
+        <i class="fa-solid ${toggleIcon}"></i>
+      </button>
+      <button class="icon-btn icon-only" data-act="edit" type="button" title="Editar" aria-label="Editar">
+        <i class="fa-solid fa-pen"></i>
+      </button>
+      <button class="icon-btn icon-only btn-danger" data-act="del" type="button" title="Borrar" aria-label="Borrar">
+        <i class="fa-solid fa-trash"></i>
+      </button>
+    </div>
+
+    <div class="card-main">
+      <div class="card-title">${rich(it.titulo)}</div>
+${it.detalle ? `<div class="card-detail" style="color:#374151">${rich(it.detalle)}</div>`:''}
+
+${Array.isArray(it.attachments) && it.attachments.length ? `
+  <div class="att-list">
+    ${it.attachments.map(a=>{
+      const isImg = (a.mime||'').startsWith('image/');
+      const name  = esc(a.name || a.path || 'archivo');
+      const url   = esc(a.url);
+      return isImg
+        ? `<a href="${url}" target="_blank" class="att att-img"><img src="${url}" alt="${name}"></a>`
+        : `<a href="${url}" target="_blank" class="att"><i class="fa-solid fa-paperclip"></i>${name}</a>`;
+    }).join('')}
+  </div>` : ''
+}
+
+      <div class="card-meta">
+        ${it.resuelta ? '<span class="badge resuelta"><i class="fa-solid fa-check"></i> Resuelta</span>' : ''}
+        ${it.responsable ? `<span class="badge"><i class="fa-solid fa-user"></i> ${linkifyEscaped(esc(it.responsable))}</span>`:''}
+        <span class="muted"><i class="fa-regular fa-clock"></i> ${fmt(it.createdAt)}</span>
+      </div>
+    </div>
+  `;
+}
+
+function editCardHTML(it){
+  return `
+    <div class="rail-left btns-print-hide">
+      <button class="icon-btn icon-only" data-edit-act="save" type="button" title="Guardar" aria-label="Guardar">
+        <i class="fa-solid fa-floppy-disk"></i>
+      </button>
+      <button class="icon-btn icon-only" data-edit-act="cancel" type="button" title="Cancelar" aria-label="Cancelar">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <div class="edit-sheet card-main">
+      <div class="edit-header"><span>Editar novedad</span></div>
+
+      <input class="edit-title" type="text" data-edit="titulo" placeholder="Título" value="${esc(it.titulo)}"/>
+
+      <textarea data-edit="detalle" placeholder="Detalle (agregá toda la info relevante)">${esc(it.detalle||'')}</textarea>
+
+      <input type="file" data-edit="files" multiple />
+<small class="muted">Podés adjuntar imágenes, PDF, etc. (se suben al guardar)</small>
+
+      <div class="edit-grid">
+        <input type="text" data-edit="responsable" placeholder="Responsable / Sector" value="${esc(it.responsable||'')}"/>
+      </div>
+    </div>
+  `;
+}
+
+    // ====== Eventos UI ======
+    els.btnNewCampaign.addEventListener('click', ()=> openCampaignModal('new'));
+    els.btnEditCampaign.addEventListener('click', ()=> openCampaignModal('edit'));
+
+    els.campaignSelect.addEventListener('change', (e)=>{ state.activeId = e.target.value || null; save(); render(); });
+
+    els.btnToggleClose.addEventListener('click', ()=>{ const c = active(); if(!c) return; c.cerrada = !c.cerrada; save(); render(); });
+
+    els.btnDemo.addEventListener('click', loadDemo);
+
+    els.btnPrint.addEventListener('click', ()=> window.print());
+
+    // Botón Agregar
+    els.btnAgregar.addEventListener('click', (e)=>{ e.preventDefault(); addItemFromForm(); });
+    els.fTitulo.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); addItemFromForm(); }});
+
+    // Modo presentación
+    els.btnPresentation.addEventListener('click', ()=>{ togglePresentation(); });
+    els.presentHud.addEventListener('click', (e)=>{
+      const btn = e.target.closest('button');
+      if(!btn) return;
+      if(btn.id==='btnPrevCat'){ presentIndex = (presentIndex + CATEGORIES.length - 1) % CATEGORIES.length; updatePresentCat(); }
+      else if(btn.id==='btnNextCat'){ presentIndex = (presentIndex + 1) % CATEGORIES.length; updatePresentCat(); }
+      else if(btn.id==='btnExitPresentation'){ exitPresentation(); }
+    });
+
+    els.fBuscar.addEventListener('input', ()=>{ searchQuery = els.fBuscar.value.trim(); render(); });
+
+    window.addEventListener('keydown', (e)=>{
+      if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); els.fBuscar.focus(); return; }
+      if(e.key==='Escape' && document.body.classList.contains('presentation')){ e.preventDefault(); exitPresentation(); return; }
+      if(document.body.classList.contains('presentation')){
+        // Evitar robar foco cuando estás escribiendo en un input (no debería haber inputs en presentación, pero por las dudas)
+        const tag = (e.target.tagName||'').toLowerCase();
+        const typing = tag==='input' || tag==='textarea' || e.target.isContentEditable;
+        if(!typing){
+          if(e.key==='ArrowLeft'){ e.preventDefault(); presentIndex = (presentIndex + CATEGORIES.length - 1) % CATEGORIES.length; updatePresentCat(); }
+          if(e.key==='ArrowRight'){ e.preventDefault(); presentIndex = (presentIndex + 1) % CATEGORIES.length; updatePresentCat(); }
+          if(e.key==='Enter' || e.key===' '){ e.preventDefault(); presentIndex = (presentIndex + 1) % CATEGORIES.length; updatePresentCat(); }
+        }
+      }
+    });
+
+function addItemFromForm(){
+  console.log('[addItemFromForm] click');
+
+  const c = active();
+  if(!c){
+    console.warn('[addItemFromForm] no hay campaña activa');
+    alert('Primero creá o seleccioná una campaña (botón "Nueva" o "Cargar demo").');
+    openCampaignModal('new');
+    return;
+  }
+  if(c.cerrada){
+    console.warn('[addItemFromForm] campaña cerrada');
+    alert('La campaña está cerrada. Reabrila para agregar novedades.');
+    return;
+  }
+
+  const titulo = (els.fTitulo.value||'').trim();
+  if(!titulo){
+    console.warn('[addItemFromForm] título vacío');
+    els.fTitulo.focus();
+    return;
+  }
+
+  const item = {
+    id: uid(),
+    categoria: els.fCategoria.value,
+    titulo,
+    detalle: (els.fDetalle.value||'').trim(),
+    responsable: (els.fResponsable.value||'').trim(),
+    resuelta: false,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  c.items = c.items || [];
+  c.items.push(item);
+  console.log('[addItemFromForm] push OK, items:', c.items.length);
+
+  // Persisto local + nube con logs claros
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  saveCloud()
+    .then(ok => console.log('[addItemFromForm] saveCloud ->', ok))
+    .catch(err => { console.error('[addItemFromForm] saveCloud error', err); alert('No se pudo guardar en la nube.'); });
+
+  els.fTitulo.value=''; els.fDetalle.value=''; els.fResponsable.value='';
+  render();
+}
+
+
+    function bindDnD(){
+      const c = active(); if(!c || c.cerrada) return;
+      if(document.body.classList.contains('presentation')) return; // desactiva DnD en presentación
+      const bodies = document.querySelectorAll('[data-drop]');
+      bodies.forEach(body=>{
+        body.addEventListener('dragover', (e)=>{ e.preventDefault(); body.parentElement.classList.add('drag-over') });
+        body.addEventListener('dragleave', ()=> body.parentElement.classList.remove('drag-over'));
+        body.addEventListener('drop', (e)=>{ e.preventDefault(); body.parentElement.classList.remove('drag-over'); const card = document.querySelector('.dragging'); const id = card?.dataset.id || e.dataTransfer.getData('text/plain'); moveItemTo(id, body.dataset.drop); });
+      });
+
+      document.querySelectorAll('.card[draggable="true"]').forEach(card=>{
+        card.addEventListener('dragstart', (e)=>{ e.dataTransfer.setData('text/plain', card.dataset.id); card.classList.add('dragging'); });
+        card.addEventListener('dragend', ()=> card.classList.remove('dragging'));
+        card.querySelectorAll('[data-act]')?.forEach(btn=>{ btn.addEventListener('click', ()=> handleCardAction(card.dataset.id, btn.dataset.act, card)); })
+      });
+    }
+
+    function moveItemTo(id, categoria){ const c = active(); if(!c) return; const it = (c.items||[]).find(x=>x.id===id); if(!it) return; it.categoria = categoria; it.updatedAt = new Date().toISOString(); save(); render(); }
+
+function handleCardAction(id, action, cardEl){
+  const c = active(); if(!c) return;
+  const idx = (c.items||[]).findIndex(x=>x.id===id); if(idx<0) return;
+  const it = c.items[idx];
+
+  if(action==='toggle'){
+    it.resuelta = !it.resuelta;
+    it.updatedAt = new Date().toISOString();
+    save(); render();
+    return;
+  }
+
+  if(action==='del'){
+    if(confirm('¿Borrar esta novedad?')){
+      c.items.splice(idx,1);
+      save(); render();
+    }
+    return;
+  }
+
+  if(action==='edit'){
+    if(!cardEl) return;
+    cardEl.draggable = false;
+    cardEl.classList.add('editing');
+    cardEl.innerHTML = editCardHTML(it);
+
+    const get = s=> cardEl.querySelector(`[data-edit="${s}"]`);
+    const btnSave   = cardEl.querySelector('[data-edit-act="save"]');
+    const btnCancel = cardEl.querySelector('[data-edit-act="cancel"]');
+
+    const ti = get('titulo');
+    const ta = get('detalle');
+
+    ti.focus();
+    autosizeTextarea(ta);
+    ta.addEventListener('input', ()=> autosizeTextarea(ta));
+
+    cardEl.addEventListener('keydown', (ev)=>{
+      if((ev.ctrlKey||ev.metaKey) && ev.key === 'Enter'){ ev.preventDefault(); btnSave.click(); }
+      if(ev.key === 'Escape'){ ev.preventDefault(); btnCancel.click(); }
+    });
+
+// REEMPLAZA SOLO ESTE HANDLER DE GUARDAR (dentro de if(action==='edit'){...})
+btnSave.addEventListener('click', async ()=>{
+  const nt = ti.value.trim();
+  if(!nt){ ti.focus(); return }
+
+  // Actualizamos campos del item
+  it.titulo      = nt;
+  it.detalle     = (ta.value||'').trim();
+  it.responsable = (get('responsable').value||'').trim();
+  it.updatedAt   = new Date().toISOString();
+
+  // Subir adjuntos si hay (usa el <input type="file" data-edit="files"> del paso 6.3)
+  const filesInput = get('files');
+  if (filesInput && filesInput.files && filesInput.files.length){
+    it.attachments = it.attachments || [];
+
+    for (const f of Array.from(filesInput.files)){
+      // nombre “seguro” para el path
+      const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      // cada archivo va en una carpeta con el ID del item
+      const path = `${it.id}/${Date.now()}-${safeName}`;
+
+      // subir al bucket público
+      const { error: upErr } = await supa
+        .storage
+        .from(BUCKET)
+        .upload(path, f,);
+
+      if (upErr){
+        console.error('upload', upErr);
+        alert('No se pudo subir: ' + f.name);
+        continue;
+      }
+
+      // URL pública para mostrar/abrir
+      const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path);
+      it.attachments.push({
+        path,
+        url: pub.publicUrl,
+        mime: f.type,
+        size: f.size,
+        name: f.name
+      });
+    }
+  }
+
+  save();   // guarda local + nube (porque ya reemplazaste save() en el paso 5.2)
+  render(); // re-dibuja la tarjeta con las miniaturas/links
+});
+
+
+    btnCancel.addEventListener('click', ()=>{ render(); });
+  }
+}
+
+    // ====== Presentación ======
+function togglePresentation(){
+  const on = !document.body.classList.contains('presentation');
+  if(on){
+    document.body.classList.add('presentation');
+    els.presentHud.classList.add('show');
+    els.btnPresentation.innerHTML = '<i class="fa-solid fa-xmark"></i> Salir presentación';
+    presentIndex = 0;
+    els.presentCatName.textContent = CATEGORIES[presentIndex];
+    updatePresentOffsets();
+    setTimeout(()=> { scrollToPresentCat(true); }, 50);
+  }else{
+    exitPresentation();
+  }
+}
+
+    function exitPresentation(){
+      document.body.classList.remove('presentation');
+      els.presentHud.classList.remove('show');
+      els.btnPresentation.innerHTML = '<i class="fa-solid fa-display"></i> Modo presentación';
+      window.scrollTo({top:0, behavior:'smooth'});
+    }
+
+ function updatePresentCat(){
+  els.presentCatName.textContent = CATEGORIES[presentIndex];
+  scrollToPresentCat(true);
+}
+
+    function scrollToPresentCat(smooth){
+      const cat = CATEGORIES[presentIndex];
+      const el = document.querySelector(`.col[data-cat="${cat}"]`);
+      if(!el) return;
+      const header = el.querySelector('.col-header');
+      const ph = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--present-head-h')) || 56;
+      const rect = (header||el).getBoundingClientRect();
+      const top = rect.top + window.scrollY - (ph + 12);
+      window.scrollTo({ top, behavior: smooth?'smooth':'auto' });
+    }
+
+    window.addEventListener('resize', ()=>{ if(document.body.classList.contains('presentation')) updatePresentOffsets(); });
+
+    // ====== Totales y semáforo ======
+    function getTotals(c){
+      const totals = {};
+      CATEGORIES.forEach(cat=>{
+        const arr = (c.items||[]).filter(i=>i.categoria===cat);
+        const abiertas = arr.filter(i=>!i.resuelta).length;
+        totals[cat] = { abiertas, resueltas: arr.length - abiertas, total: arr.length };
+      });
+      return totals;
+    }
+   
+ function updatePresentOffsets(){
+  const isPres = document.body.classList.contains('presentation');
+  const ph = isPres ? 0 : (els.presentHeader?.offsetHeight || 56); // en presentación no hay cabecera
+  const ch = document.querySelector('.col-header')?.offsetHeight || 52;
+  document.documentElement.style.setProperty('--present-head-h', ph + 'px');
+  document.documentElement.style.setProperty('--cat-head-h', ch + 'px');
+}
+
+    function openCampaignModal(mode='new'){
+  modalMode = mode;
+  const today = toISODate(new Date());
+  const finPorDef = addDays(today, 13);
+  const c = active();
+  const isEdit = mode==='edit' && c;
+
+  // Fechas base
+  const inicio = isEdit ? c.inicio : today;
+  const finv   = isEdit ? c.fin    : finPorDef;
+
+  // Nombre autogenerado (aunque no se muestre)
+  const autoNombre = `Campaña ${inicio} a ${finv}`;
+  const nombre = isEdit ? (c.nombre || autoNombre) : autoNombre;
+
+  const gs = isEdit? (c.guardiaSaliente||'') : '';
+  const ge = isEdit? (c.guardiaEntrante||'') : '';
+  const sup1 = isEdit? ((c.supervisores||[])[0]||'') : '';
+  const sup2 = isEdit? ((c.supervisores||[])[1]||'') : '';
+
+  // Operadores por turno (compatibilidad con "operadores" plano)
+  const opsDia   = isEdit ? (Array.isArray(c.operadoresDia)   ? c.operadoresDia   : (Array.isArray(c.operadores) ? c.operadores : [])) : [];
+  const opsNoche = isEdit ? (Array.isArray(c.operadoresNoche) ? c.operadoresNoche : []) : [];
+
+  // Precargar ambos (dialog y fallback)
+  els.mTitle.textContent = isEdit? 'Editar campaña' : 'Nueva campaña';
+  els.mNombre.value = nombre; els.mInicio.value = inicio; els.mFin.value = finv; els.mGS.value = gs; els.mGE.value = ge; els.mSup1.value = sup1; els.mSup2.value = sup2;
+  els.fmTitle.textContent = els.mTitle.textContent; els.fmNombre.value = nombre; els.fmInicio.value = inicio; els.fmFin.value = finv; els.fmGS.value = gs; els.fmGE.value = ge; els.fmSup1.value = sup1; els.fmSup2.value = sup2;
+
+  if (els.mOpsDia)    els.mOpsDia.value    = opsDia.join('\n');
+  if (els.mOpsNoche)  els.mOpsNoche.value  = opsNoche.join('\n');
+  if (els.fmOpsDia)   els.fmOpsDia.value   = opsDia.join('\n');
+  if (els.fmOpsNoche) els.fmOpsNoche.value = opsNoche.join('\n');
+
+  try{
+    if(els.campaignModal && typeof els.campaignModal.showModal === 'function'){ els.campaignModal.showModal(); }
+    else { els.fb.setAttribute('open',''); }
+  }catch(err){ els.campaignModal.setAttribute('open',''); }
+}
+
+
+  els.mCancel.addEventListener('click', ()=>{ try{ els.campaignModal.close(); }catch(_) { els.campaignModal.removeAttribute('open'); }});
+
+  els.mSave.addEventListener('click', (e)=>{e.preventDefault();
+  const nombre = els.mNombre.value.trim();
+  const inicio = els.mInicio.value;
+  const fin = els.mFin.value;
+  const gs = els.mGS.value.trim();
+  const ge = els.mGE.value.trim();
+  const sup1 = els.mSup1.value.trim();
+  const sup2 = els.mSup2.value.trim();
+  const opsDiaStr = els.mOpsDia?.value || '';
+  const opsNocheStr = els.mOpsNoche?.value || '';
+  saveCampaign(nombre, inicio, fin, gs, ge, sup1, sup2, opsDiaStr, opsNocheStr);
+  try{ els.campaignModal.close(); }catch(_) { els.campaignModal.removeAttribute('open'); }
+});
+
+let pendingDeleteId = null;
+
+if(els.btnDeleteCampaign){
+  els.btnDeleteCampaign.addEventListener('click', ()=>{
+    const c = active();
+    if(!c){ alert('No hay campaña activa.'); return; }
+    pendingDeleteId = c.id;
+    const count = (c.items||[]).length;
+    els.cdText.textContent = `${fmt(c.inicio)} – ${fmt(c.fin)} (${count} novedades)`;
+    els.cdInput.value = '';
+    els.cdError.style.display = 'none';
+    try{ els.confirmDeleteModal.showModal(); }catch(_){ els.confirmDeleteModal.setAttribute('open',''); }
+  });
+}
+
+els.cdCancel?.addEventListener('click', ()=>{
+  try{ els.confirmDeleteModal.close(); }catch(_){ els.confirmDeleteModal.removeAttribute('open'); }
+});
+
+els.cdConfirm?.addEventListener('click', (e)=>{
+  e.preventDefault();
+  const val = (els.cdInput.value||'').trim().toUpperCase();
+  if(val !== 'ELIMINAR'){
+    els.cdError.style.display = 'block';
+    els.cdInput.focus();
+    return;
+  }
+  if(pendingDeleteId){ deleteCampaignById(pendingDeleteId); }
+  pendingDeleteId = null;
+  try{ els.confirmDeleteModal.close(); }catch(_){ els.confirmDeleteModal.removeAttribute('open'); }
+});
+
+// Enter para confirmar, Esc para cerrar
+els.confirmDeleteModal?.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape'){ e.preventDefault(); els.cdCancel.click(); }
+  if(e.key === 'Enter' && (document.activeElement === els.cdInput)){ e.preventDefault(); els.cdConfirm.click(); }
+});
+
+// Deshabilitar el botón si no hay campaña
+function updateDeleteBtn(){
+  if(!els.btnDeleteCampaign) return;
+  els.btnDeleteCampaign.disabled = !active();
+}
+
+
+    // fallback actions
+els.fmSave.addEventListener('click', ()=>{
+  const nombre = els.fmNombre.value.trim();
+  const inicio = els.fmInicio.value;
+  const fin = els.fmFin.value;
+  const gs = els.fmGS.value.trim();
+  const ge = els.fmGE.value.trim();
+  const sup1 = els.fmSup1.value.trim();
+  const sup2 = els.fmSup2.value.trim();
+  const opsDiaStr = els.fmOpsDia?.value || '';
+  const opsNocheStr = els.fmOpsNoche?.value || '';
+  saveCampaign(nombre, inicio, fin, gs, ge, sup1, sup2, opsDiaStr, opsNocheStr);
+  els.fb.removeAttribute('open');
+});
+
+    function parseList(s){
+  return (s || '')
+    .split(/\r?\n|,/)
+    .map(v => v.trim())
+    .filter(Boolean);
+}
+    
+    function saveCampaign(nombre, inicio, fin, gs, ge, sup1, sup2, opsDiaStr = '', opsNocheStr = ''){
+  // Validaciones básicas
+  if(!nombre || !inicio || !fin){
+    alert('Completá nombre e intervalo de fechas.');
+    return;
+  }
+  if(new Date(inicio) > new Date(fin)){
+    alert('La fecha de inicio no puede ser mayor a la de fin.');
+    return;
+  }
+
+  // Normalizar datos
+  const supervisores   = [sup1, sup2].map(s => (s||'').trim()).filter(Boolean);
+  const operadoresDia  = parseList(opsDiaStr);    // <- usa el helper de D.1
+  const operadoresNoche= parseList(opsNocheStr);  // <- usa el helper de D.1
+
+  if(modalMode === 'edit' && active()){
+    // EDITAR campaña actual
+    const c = active();
+    c.nombre           = nombre;
+    c.inicio           = inicio;
+    c.fin              = fin;
+    c.guardiaSaliente  = gs;
+    c.guardiaEntrante  = ge;
+    c.supervisores     = supervisores;
+    c.operadoresDia    = operadoresDia;     // ✅ guardamos por turno
+    c.operadoresNoche  = operadoresNoche;   // ✅ guardamos por turno
+    // (Compatibilidad: si venías usando "operadores" plano, ya no hace falta mantenerlo)
+    save();
+    render();
+  }else{
+    // NUEVA campaña
+    const camp = {
+      id: uid(),
+      nombre,
+      inicio,
+      fin,
+      cerrada: false,
+      items: [],
+      guardiaSaliente: gs,
+      guardiaEntrante: ge,
+      supervisores,
+      operadoresDia,       // ✅ guardamos por turno
+      operadoresNoche      // ✅ guardamos por turno
+    };
+    state.campaigns.push(camp);
+    state.activeId = camp.id;
+    save();
+    render();
+  }
+}
+
+function loadDemo(){
+  const baseInicio = toISODate(new Date());
+  const baseFin = addDays(baseInicio, 13);
+
+  const demo = {
+    id: uid(),
+    nombre: `Demo · ${baseInicio} a ${baseFin}`,
+    inicio: baseInicio,
+    fin: baseFin,
+    cerrada: false,
+    items: [],
+    guardiaSaliente: 'Guardia A',
+    guardiaEntrante: 'Guardia B',
+    supervisores: ['Luis Gomez'],
+    operadoresDia:   ['Gonzalez Favio','Toscano Lorena'],
+    operadoresNoche: ['Luna Brenda','Gonzalez Franco']
+  };
+
+const add=(cat,tit,det,resp,days,res=false)=>{
+  demo.items.push({
+    id: uid(),
+    categoria: cat,
+    titulo: tit,
+    detalle: det,
+    responsable: resp,
+    resuelta: !!res,
+    createdAt: new Date(Date.now() - (days*86400000)).toISOString(),
+    updatedAt: new Date().toISOString()
+  });
+};
+
+  // ===== Importantes =====
+  add('Importantes','Cambio de protocolo en portería norte','Doble factor de verificación desde 08:00. Difundir a contratistas.','Sistemas',1,false);
+  add('Importantes','Plan de evacuación en área 12','Simulacro parcial con brigada HSE (jueves 11:00).','HSE', 2,false);
+  add('Importantes','Vulnerabilidad en red CCTV zona sur','Segmentación aplicada; monitorear latencias.','Sistemas', 3,true);
+  add('Importantes','Corte programado de energía — molienda','Aviso a operaciones y checklist previo.','Mantenimiento',4,false);
+  add('Importantes','Acceso restringido a depósito de reactivos','Solo personal autorizado con listado actualizado.','Seguridad',2,false);
+
+  // ===== Directivas =====
+  add('Directivas','Checklist de cámaras (formato nuevo)','Subir resumen al cierre de cada turno','Operaciones',1,false);
+  add('Directivas','Reporte de incidentes diario (Shift Log)','Adjuntar ID de incidente del VMS','Supervisión',0,false);
+  add('Directivas','Control al azar de credenciales en portería','Registrar en planilla “Controles Aleatorios”','Seguridad',2,false);
+  add('Directivas','Briefing 07:45 en sala NOC','Asistencia obligatoria turno día','Supervisión',0,false);
+  add('Directivas','Prueba de sirenas internas','Coordinado con HSE','HSE',5,true);
+
+  // ===== Pendiente =====
+  add('Pendiente','Reemplazo de UPS — sala Racks 2','Ticket #5812 en curso','Mantenimiento',3,false);
+  add('Pendiente','Reparar barrera perimetral km 3.2','Repuestos en tránsito','Mantenimiento',5,false);
+  add('Pendiente','Actualizar firmware cámaras PTZ','Ventana fuera de horario productivo','Sistemas',4,false);
+  add('Pendiente','Licencias vencidas de VMS (3 nodos)','Solicitud a compras enviada','Sistemas',6,false);
+  add('Pendiente','Cambio batería radio base 5','Chequear disponibilidad','Comunicaciones',2,true);
+  add('Pendiente','Alta de usuario contratista ACME','Solo acceso a zona talleres','RRHH',1,false);
+
+  // ===== Informativo =====
+  add('Informativo','Clima','Pronóstico: nevadas leves jueves/viernes.','HSE',4,false);
+  add('Informativo','Capacitación VMS — martes 16:00','Sala NOC + remoto (Teams).','Sistemas',2,false);
+  add('Informativo','Ingreso flota nueva de buses','Coordinado con Transporte.','Transporte',5,false);
+  add('Informativo','Visita de auditoría interna — lunes','Preparar documentación de acceso.','Calidad',6,false);
+  add('Informativo','Señalización nueva en camino 3','Velocidad máxima 20 km/h.','Operaciones',3,false);
+  add('Informativo','Cambio de proveedor de EPP (01/09)','Entrega escalonada por sector.','Compras',1,false);
+
+  state.campaigns.push(demo);
+  state.activeId = demo.id;
+  save();
+  render();
+  alert('Demo cargada (Supervisor + Operadores Día/Noche).');
+}
+
+
+(async function bootstrap(){
+  console.log('[bootstrap] start');
+  let cloud = null;
+
+  try {
+    cloud = await loadCloud(); // intenta leer
+  } catch (e) {
+    console.error('[bootstrap] loadCloud error', e);
+  }
+
+  if (cloud && typeof cloud === 'object') {
+    console.log('[bootstrap] usando estado REMOTO');
+    state = cloud;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } else {
+    console.warn('[bootstrap] no hay doc remoto o fallo la lectura; NO subo vacío.');
+    // Solo subo si YA hay algo local (p.ej. si volvés a entrar con una campaña creada)
+    if (state && Array.isArray(state.campaigns) && state.campaigns.length) {
+      console.log('[bootstrap] empujando estado LOCAL existente a la nube');
+      await saveCloud();
+    }
+  }
+
+  render();
+  if (!state.campaigns.length) ensureCampaign(); // abre modal "Nueva" si está vacío
+
+  setupRealtime();
+})();
+
+
+window.forcePull = async ()=>{
+  const cloud = await loadCloud();
+  console.log('forcePull cloud?', !!cloud);
+  if (cloud){
+    state = cloud;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    render();
+  }
+};
+
+window.scc = {
+  active, stateRef: ()=>state,
+  cloudGet: ()=>supa.from('boards').select('data').eq('slug', BOARD_SLUG).maybeSingle().then(r=>{console.log('[cloudGet]', r); return r;}),
+  cloudSave: saveCloud
+};
+
+  </script>
+</body>
+</html>
