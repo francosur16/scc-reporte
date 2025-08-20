@@ -907,7 +907,7 @@ async function uploadFileToSupabase(file, itemId){
   console.log('[upload] start', { name: file?.name, type: file?.type, size: file?.size });
   if (!file) throw new Error('No se recibió archivo');
 
-  // comprimir si conviene
+  // 1) Comprimir si conviene
   let processed = file;
   try {
     processed = await compressImageIfNeeded(file);
@@ -916,48 +916,63 @@ async function uploadFileToSupabase(file, itemId){
     console.warn('[upload] compress skip/warn', e);
   }
 
+  // 2) Path lógico (la function agrega el bucket real)
   const safeName = sanitizeName(processed.name || 'archivo');
   const path = `${itemId}/${Date.now()}-${safeName}`;
   console.log('[upload] path ->', `${BUCKET}/${path}`);
 
-  // timeout “duro” para que no quede colgado
+  // 3) Timeout duro
   const timeout = new Promise((_, rej)=> setTimeout(()=> rej(new Error('Timeout subiendo a Storage (15s)')), 15000));
 
+  // 4) Operación real: llamar a la Netlify Function
   const op = (async ()=>{
-    const { data, error } = await supa
-      .storage.from(BUCKET)
-      .upload(path, processed, {
-        cacheControl: '3600',
-        contentType: processed.type || 'application/octet-stream',
-        upsert: false
-      });
+    // a) convertir a base64 (sin leer como dataURL para no inflar memoria)
+    const arr = await processed.arrayBuffer();
+    let bin = '';
+    const bytes = new Uint8Array(arr);
+    for (let i=0; i<bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    const base64 = btoa(bin);
 
-    // Log del response crudo (si la lib lo expone)
-    if (data?.Key || data?.id) console.log('[upload] storage data', data);
-    if (error) {
-      console.error('[upload] ERROR from supabase', error);
-      throw new Error(error.message || String(error));
+    // b) POST a /.netlify/functions/upload
+    const resp = await fetch('/.netlify/functions/upload', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        path,                                 // ej: "itemId/timestamp-nombre.jpg"
+        base64,
+        type: processed.type || 'application/octet-stream',
+        name: processed.name || file.name || 'archivo'
+      })
+    });
+
+    // c) forzar parse seguro por si la función devuelve HTML/502
+    const raw = await resp.text();
+    let payload;
+    try { payload = JSON.parse(raw); }
+    catch {
+      console.error('[upload fn] non-JSON response', resp.status, raw);
+      throw new Error(`Upload fn bad response ${resp.status}`);
     }
 
-    const { data: pub, error: pubErr } = supa.storage.from(BUCKET).getPublicUrl(path);
-    if (pubErr) {
-      console.error('[upload] public url error', pubErr);
-      throw new Error(pubErr.message || String(pubErr));
+    if (!resp.ok || !payload?.ok) {
+      console.error('[upload fn] error payload', payload);
+      throw new Error(payload?.error || `Upload fn failed ${resp.status}`);
     }
 
-    console.log('[upload] OK', pub.publicUrl);
+    // d) devolver metadata uniforme
     return {
-      path,
-      url: pub.publicUrl,
+      path: payload.path,                     // path dentro del bucket
+      url:  payload.url,                      // URL pública
       mime: processed.type || file.type || 'application/octet-stream',
       size: processed.size ?? file.size,
       name: file.name
     };
   })();
 
-  return Promise.race([op, timeout]);
+  const meta = await Promise.race([op, timeout]);
+  console.log('[upload] OK', meta.url);
+  return meta;
 }
-
 
     // ====== Storage y Estado ======
     const STORAGE_KEY = 'scc-pase-novedades-v1';
