@@ -1,19 +1,18 @@
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
-export default async (event, context) => {
+module.exports = async (event, context) => {
   try {
     const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
     if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       return { statusCode: 500, body: JSON.stringify({ error: 'Missing SUPABASE envs' }) };
     }
+
     const { slug, data: boardData } = JSON.parse(event.body || '{}');
     if (!slug || !boardData) {
       return { statusCode: 400, body: JSON.stringify({ error: 'missing slug/data' }) };
     }
 
     const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-
-    // upsert por slug
     const { error } = await supa
       .from('boards')
       .upsert({ slug, data: boardData }, { onConflict: 'slug' });
