@@ -1492,140 +1492,72 @@ function handleCardAction(id, action, cardEl){
     });
 
 
-// REEMPLAZO COMPLETO — handler con probe, timeout y logs
+// === REEMPLAZO COMPLETO DEL HANDLER "Guardar" ===
 btnSave.addEventListener('click', async ()=>{
   const nt = ti.value.trim();
   if(!nt){ ti.focus(); return }
 
-  // feedback de “ocupado”
-  btnSave.disabled = true;
-  const prevHTML = btnSave.innerHTML;
-  btnSave.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Guardando...';
+  // Actualizamos campos del item
+  it.titulo      = nt;
+  it.detalle     = (ta.value||'').trim();
+  it.responsable = (get('responsable').value||'').trim();
+  it.updatedAt   = new Date().toISOString();
 
-  // helper de timeout (no cancela la subida, solo evita UI colgada)
-  const withTimeout = (p, ms=60000) =>
-    Promise.race([ p, new Promise((_,rej)=> setTimeout(()=> rej(new Error('timeout')), ms)) ]);
+  // Helper: llamar a la función serverless con base64 y path
+  async function uploadViaFn(file, path){
+    // leemos el archivo a base64
+    const b64 = await new Promise((resolve, reject)=>{
+      const fr = new FileReader();
+      fr.onload = ()=> resolve(fr.result.split(',')[1]);
+      fr.onerror = reject;
+      fr.readAsDataURL(file);
+    });
 
-  // ---- PROBE: prueba de escritura al bucket antes de subir archivos grandes
-  async function canUpload() {
-    try{
-      const probePath = `${it.id}/__probe-${Date.now()}.txt`;
-      const blob = new Blob([new Uint8Array([0x70])], { type: 'text/plain' });
-      const upRes = await withTimeout(
-        supa.storage.from(BUCKET).upload(probePath, blob, { upsert:false, contentType: 'text/plain' }),
-        8000 // 8s para el probe
-      );
-      if (upRes?.error){
-        console.error('[probe] upload error:', upRes.error);
-        return { ok:false, err: upRes.error };
+    const r = await fetch('/.netlify/functions/upload', {
+      method: 'POST',
+      headers: { 'content-type':'application/json' },
+      body: JSON.stringify({
+        path, name: file.name, type: file.type, base64: b64
+      })
+    });
+    const j = await r.json();
+    if(!r.ok || !j.ok){
+      throw new Error(j?.error || ('upload failed: HTTP '+r.status));
+    }
+    return j; // { ok:true, url, path, name, type }
+  }
+
+  const filesInput = get('files');
+  if (filesInput && filesInput.files && filesInput.files.length){
+    it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
+    for (const f of Array.from(filesInput.files)){
+      const sizeMB = f.size / (1024*1024);
+      if (sizeMB > MAX_FILE_MB){
+        alert(`"${f.name}" pesa ${sizeMB.toFixed(1)} MB. Límite: ${MAX_FILE_MB} MB.`);
+        continue;
       }
-      // borrar el probe para no ensuciar
-      const delRes = await supa.storage.from(BUCKET).remove([probePath]);
-      if (delRes?.error) console.warn('[probe] remove warn:', delRes.error);
-      return { ok:true };
-    }catch(e){
-      console.error('[probe] exception/timeout:', e);
-      return { ok:false, err:e };
+      const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path = `${it.id}/${Date.now()}-${safeName}`;
+
+      try{
+        // SUBE VIA FUNCIÓN (evita CORS/HTTP2 issues)
+        const r = await uploadViaFn(f, path);
+        it.attachments.push({
+          path: r.path,
+          url: r.url,
+          mime: r.type || f.type,
+          size: f.size,
+          name: f.name
+        });
+      }catch(e){
+        console.error('[upload fn] error', e);
+        alert('No se pudo subir "'+f.name+'": '+ e.message);
+      }
     }
   }
 
-  try{
-    // Actualizamos campos del item
-    it.titulo      = nt;
-    it.detalle     = (ta.value||'').trim();
-    it.responsable = (get('responsable').value||'').trim();
-    it.updatedAt   = new Date().toISOString();
-
-    const filesInput = get('files');
-    const hasFiles = filesInput && filesInput.files && filesInput.files.length;
-
-    if (hasFiles){
-      // 1) Probar permiso/escritura rápida
-      const probe = await canUpload();
-      if (!probe.ok){
-        const msg = probe.err?.message || String(probe.err || '');
-        alert(
-          'No se pudo escribir en el bucket.\n\n' +
-          'Posibles causas:\n' +
-          '• El bucket "'+BUCKET+'" no existe o no es público.\n' +
-          '• Falta política de INSERT para el rol anon.\n' +
-          '• CORS/bloqueo de red.\n\n' +
-          'Detalle: ' + msg
-        );
-        console.error('[upload] probe failed:', probe.err);
-        // Guardamos igual el item (sin adjuntos) y salimos
-        save(); render();
-        return;
-      }
-
-      // 2) Subimos archivos (secuencial + timeout + logs)
-      it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
-
-      for (const f of Array.from(filesInput.files)){
-        try{
-          const sizeMB = f.size / (1024*1024);
-          if (sizeMB > MAX_FILE_MB){
-            alert(`"${f.name}" pesa ${sizeMB.toFixed(1)} MB. Límite: ${MAX_FILE_MB} MB.`);
-            continue;
-          }
-
-          const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-          const path = `${it.id}/${Date.now()}-${safeName}`;
-
-          console.log('[upload] start', { path, name:f.name, size:f.size, type:f.type });
-
-          const upRes = await withTimeout(
-            supa.storage.from(BUCKET).upload(path, f, {
-              upsert: false,
-              contentType: f.type || undefined,
-              cacheControl: '3600'
-            }),
-            60000 // 60s por archivo
-          );
-
-          if (upRes?.error){
-            console.error('[upload] error object:', upRes.error);
-            alert(`No se pudo subir "${f.name}": ${upRes.error.message || upRes.error}`);
-            continue;
-          }
-
-          const { data: pub, error: pubErr } = supa.storage.from(BUCKET).getPublicUrl(path);
-          if (pubErr || !pub?.publicUrl){
-            console.error('[publicUrl] error:', pubErr);
-            alert(`Subió "${f.name}" pero no obtuve URL pública.`);
-            continue;
-          }
-
-          it.attachments.push({
-            path,
-            url: pub.publicUrl,
-            mime: f.type,
-            size: f.size,
-            name: f.name
-          });
-
-          console.log('[upload] ok', { path, publicUrl: pub.publicUrl });
-        }catch(e){
-          console.error('[upload] exception/timeout', e);
-          const msg = (e && e.message === 'timeout')
-            ? 'Tardó demasiado (timeout).'
-            : (e?.message || 'Error de red.');
-          alert(`No se pudo subir "${f.name}": ${msg} Se guardará igual sin ese adjunto.`);
-          continue;
-        }
-      }
-    }
-
-    // Guardamos SIEMPRE (aunque algún adjunto haya fallado)
-    save();
-    render();
-  }catch(err){
-    console.error('btnSave fatal', err);
-    alert('Ocurrió un error inesperado al guardar.');
-  }finally{
-    btnSave.disabled = false;
-    btnSave.innerHTML = prevHTML;
-  }
+  save();   // guarda local + nube (tu save() ya sube el JSON)
+  render(); // re-dibuja con los adjuntos
 });
 
     btnCancel.addEventListener('click', ()=>{ render(); });
