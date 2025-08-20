@@ -863,11 +863,63 @@ body.presentation .empty-col{
 const SUPABASE_URL = 'https://ixzpjcuuvorndkgphtue.supabase.co';   // Settings > API > Project URL
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enBqY3V1dm9ybmRrZ3BodHVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU1MzgzMjcsImV4cCI6MjA3MTExNDMyN30.m5t7dnPUpNygn0VD4NccsZsUcNoxJJXKnMUkspHNpp8';                    // Settings > API > anon public
 const BOARD_SLUG = 'scc-reporte-publico';
-const BUCKET = 'scc-uploads';
+const BUCKET = 'novedades';
 const MAX_FILE_MB = 5; // límite por archivo (podés subirlo/lowerlo)
 
 
 const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// === Helpers de subida directa a Supabase Storage (sin función serverless) ===
+function sanitizeName(name) {
+  return (name || 'archivo')
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9._-]/g, '');
+}
+
+async function compressImageIfNeeded(file, maxW = 1600, quality = 0.85){
+  if (!file || !file.type?.startsWith('image/')) return file;
+  // Si ya es liviana y no es PNG grande, no convertir
+  if (file.size <= 2_000_000 && !/png$/i.test(file.name)) return file;
+
+  const img = new Image();
+  img.src = URL.createObjectURL(file);
+  await img.decode();
+
+  const scale = Math.min(1, maxW / img.width);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality));
+  return new File([blob], file.name.replace(/\.\w+$/, '.jpg'), { type: 'image/jpeg' });
+}
+
+async function uploadFileToSupabase(file, itemId){
+  // comprimir si conviene
+  const processed = await compressImageIfNeeded(file);
+
+  // seguridad en nombre + path único
+  const safeName = sanitizeName(processed.name);
+  const path = `${itemId}/${Date.now()}-${safeName}`;
+
+  const { data, error } = await supa
+    .storage.from(BUCKET)
+    .upload(path, processed, { contentType: processed.type || 'application/octet-stream', upsert: false });
+
+  if (error) throw error;
+
+  const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path);
+  return {
+    path,
+    url: pub.publicUrl,
+    mime: processed.type || file.type || 'application/octet-stream',
+    size: processed.size ?? file.size,
+    name: file.name
+  };
+}
 
     // ====== Storage y Estado ======
     const STORAGE_KEY = 'scc-pase-novedades-v1';
@@ -1492,7 +1544,7 @@ function handleCardAction(id, action, cardEl){
     });
 
 
-// === REEMPLAZO COMPLETO DEL HANDLER "Guardar" ===
+// === REEMPLAZO COMPLETO DEL HANDLER "Guardar" (subida directa a Supabase) ===
 btnSave.addEventListener('click', async ()=>{
   const nt = ti.value.trim();
   if(!nt){ ti.focus(); return }
@@ -1503,55 +1555,23 @@ btnSave.addEventListener('click', async ()=>{
   it.responsable = (get('responsable').value||'').trim();
   it.updatedAt   = new Date().toISOString();
 
-  // Helper: llamar a la función serverless con base64 y path
-  async function uploadViaFn(file, path){
-    // leemos el archivo a base64
-    const b64 = await new Promise((resolve, reject)=>{
-      const fr = new FileReader();
-      fr.onload = ()=> resolve(fr.result.split(',')[1]);
-      fr.onerror = reject;
-      fr.readAsDataURL(file);
-    });
-
-    const r = await fetch('/.netlify/functions/upload', {
-      method: 'POST',
-      headers: { 'content-type':'application/json' },
-      body: JSON.stringify({
-        path, name: file.name, type: file.type, base64: b64
-      })
-    });
-    const j = await r.json();
-    if(!r.ok || !j.ok){
-      throw new Error(j?.error || ('upload failed: HTTP '+r.status));
-    }
-    return j; // { ok:true, url, path, name, type }
-  }
-
+  // Adjuntos (subida directa sin base64)
   const filesInput = get('files');
   if (filesInput && filesInput.files && filesInput.files.length){
     it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
+
     for (const f of Array.from(filesInput.files)){
       const sizeMB = f.size / (1024*1024);
       if (sizeMB > MAX_FILE_MB){
         alert(`"${f.name}" pesa ${sizeMB.toFixed(1)} MB. Límite: ${MAX_FILE_MB} MB.`);
         continue;
       }
-      const safeName = f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-      const path = `${it.id}/${Date.now()}-${safeName}`;
-
       try{
-        // SUBE VIA FUNCIÓN (evita CORS/HTTP2 issues)
-        const r = await uploadViaFn(f, path);
-        it.attachments.push({
-          path: r.path,
-          url: r.url,
-          mime: r.type || f.type,
-          size: f.size,
-          name: f.name
-        });
+        const meta = await uploadFileToSupabase(f, it.id); // 👈 directo a Storage
+        it.attachments.push(meta);                         // {path,url,mime,size,name}
       }catch(e){
-        console.error('[upload fn] error', e);
-        alert('No se pudo subir "'+f.name+'": '+ e.message);
+        console.error('[upload direct] error', e);
+        alert('No se pudo subir "'+f.name+'": '+ (e?.message || e));
       }
     }
   }
