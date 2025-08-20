@@ -1,12 +1,14 @@
-import { createClient } from '@supabase/supabase-js';
+const { createClient } = require('@supabase/supabase-js');
 
-export default async (event, context) => {
+module.exports = async (event, context) => {
   try {
     const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
-    const slug = (new URL(event.rawUrl)).searchParams.get('slug') || 'scc-reporte-publico';
     if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       return { statusCode: 500, body: JSON.stringify({ error: 'Missing SUPABASE envs' }) };
     }
+    const url = new URL(event.rawUrl || `http://x${event.path}${event.queryString || ''}`);
+    const slug = url.searchParams.get('slug') || 'scc-reporte-publico';
+
     const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const { data, error } = await supa.from('boards').select('data').eq('slug', slug).maybeSingle();
     if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
