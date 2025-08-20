@@ -883,6 +883,18 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9._-]/g, '');
 }
 
+function cacheBust(url){
+  try{
+    const u = new URL(url);
+    u.searchParams.set('t', Date.now());
+    return u.toString();
+  }catch(_){
+    // si por alguna razón falla URL(), fallback simple
+    const sep = url.includes('?') ? '&' : '?';
+    return url + sep + 't=' + Date.now();
+  }
+}
+
 async function compressImageIfNeeded(file, maxW = 1600, quality = 0.85){
   if (!file || !file.type?.startsWith('image/')) return file;
   // Si ya es liviana y no es PNG grande, no convertir
@@ -1394,13 +1406,23 @@ ${Array.isArray(it.attachments) && it.attachments.length ? `
     ${it.attachments.map(a=>{
       const isImg = (a.mime||'').startsWith('image/');
       const name  = esc(a.name || a.path || 'archivo');
-      const url   = esc(a.url);
+
+      // Si por alguna razón no quedó guardada la url, la reconstruimos del path:
+      const rawUrl = a.url || supa.storage.from(BUCKET).getPublicUrl(a.path).data.publicUrl;
+      const url = cacheBust(rawUrl);
+
       return isImg
-        ? `<a href="${url}" target="_blank" class="att att-img"><img src="${url}" alt="${name}"></a>`
-        : `<a href="${url}" target="_blank" class="att"><i class="fa-solid fa-paperclip"></i>${name}</a>`;
+        ? `<a href="${rawUrl}" target="_blank" class="att att-img" title="${name}">
+             <img src="${url}" alt="${name}" loading="lazy"
+                  onerror="this.parentElement.className='att'; this.parentElement.innerHTML='<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}'; this.parentElement.href='${rawUrl}'">
+           </a>`
+        : `<a href="${url}" target="_blank" class="att" title="${name}">
+             <i class="fa-solid fa-paperclip"></i>${name}
+           </a>`;
     }).join('')}
   </div>` : ''
 }
+
 
       <div class="card-meta">
         ${it.resuelta ? '<span class="badge resuelta"><i class="fa-solid fa-check"></i> Resuelta</span>' : ''}
