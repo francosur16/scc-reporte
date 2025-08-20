@@ -2,15 +2,7 @@
 <html lang="es">
 <head>
 
-  <script type="module">
-  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-  window.supa = createClient(
-    'https://ixzpjcuuvorndkgphtue.supabase.co',
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enBqY3V1dm9ybmRrZ3BodHVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU1MzgzMjcsImV4cCI6MjA3MTExNDMyN30.m5t7dnPUpNygn0VD4NccsZsUcNoxJJXKnMUkspHNpp8'
-  )
-  window.SUPABASE_URL = 'https://ixzpjcuuvorndkgphtue.supabase.co'
-  window.BUCKET = 'novedades'
-</script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Reporte de Campaña · SCC</title>
@@ -1592,20 +1584,16 @@ btnSave.addEventListener('click', async ()=>{
   const nt = ti.value.trim();
   if(!nt){ ti.focus(); return }
 
-  // Validación rápida de bucket/cliente
-  if (!BUCKET) { alert('Falta configurar el BUCKET'); return; }
-  if (!supa)   { alert('Supabase no inicializado'); return; }
-
   // Actualizamos campos del item
   it.titulo      = nt;
   it.detalle     = (ta.value||'').trim();
   it.responsable = (get('responsable').value||'').trim();
   it.updatedAt   = new Date().toISOString();
 
+  // Adjuntos (subida directa sin base64)
   const filesInput = get('files');
   if (filesInput && filesInput.files && filesInput.files.length){
     it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
-
     for (const f of Array.from(filesInput.files)){
       const sizeMB = f.size / (1024*1024);
       if (sizeMB > MAX_FILE_MB){
@@ -1613,8 +1601,8 @@ btnSave.addEventListener('click', async ()=>{
         continue;
       }
       try{
-        const meta = await uploadFileToSupabase(f, it.id);
-        it.attachments.push(meta);
+        const meta = await uploadFileToSupabase(f, it.id); // 👈 directo a Storage
+        it.attachments.push(meta);                         // {path,url,mime,size,name}
       }catch(e){
         console.error('[upload direct] error', e);
         alert('No se pudo subir "'+f.name+'": '+ (e?.message || e));
@@ -1625,7 +1613,6 @@ btnSave.addEventListener('click', async ()=>{
   save();   // guarda local + nube
   render(); // re-dibuja con adjuntos
 });
-
 
     btnCancel.addEventListener('click', ()=>{ render(); });
   }
