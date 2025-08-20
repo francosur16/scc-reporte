@@ -1,8 +1,12 @@
 const { createClient } = require('@supabase/supabase-js');
 
-module.exports = async (event, context) => {
+exports.handler = async (event, context) => {
   try {
-    const { SUPABASE_URL, SUPABASE_SERVICE_KEY, SUPABASE_BUCKET } = process.env;
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_SERVICE_KEY =
+      process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE;
+    const SUPABASE_BUCKET = process.env.SUPABASE_BUCKET;
+
     if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY || !SUPABASE_BUCKET) {
       return { statusCode: 500, body: JSON.stringify({ ok: false, error: 'Missing SUPABASE envs' }) };
     }
@@ -14,8 +18,8 @@ module.exports = async (event, context) => {
     }
 
     const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
-
     const bytes = Buffer.from(base64, 'base64');
+
     const { error: upErr } = await supa.storage
       .from(SUPABASE_BUCKET)
       .upload(path, bytes, {
@@ -28,10 +32,7 @@ module.exports = async (event, context) => {
     }
 
     const { data: pub } = supa.storage.from(SUPABASE_BUCKET).getPublicUrl(path);
-    return {
-      statusCode: 200,
-      body: JSON.stringify({ ok: true, path, url: pub.publicUrl, type, name })
-    };
+    return { statusCode: 200, body: JSON.stringify({ ok: true, path, url: pub.publicUrl, type, name }) };
   } catch (e) {
     return { statusCode: 500, body: JSON.stringify({ ok: false, error: e?.message || String(e) }) };
   }
