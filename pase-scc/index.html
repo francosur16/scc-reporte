@@ -865,6 +865,9 @@ const BOARD_SLUG = 'scc-reporte-publico';
 const BUCKET = 'novedades';
 const MAX_FILE_MB = 5; // límite por archivo (podés subirlo/lowerlo)
 
+const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// logs de verificación (después de crear supa)
 console.log('[scc] supabase global?', typeof supabase);
 console.log('[scc] client ok?', !!supa);
 console.log('[scc] url:', SUPABASE_URL);
