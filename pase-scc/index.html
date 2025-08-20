@@ -1405,18 +1405,25 @@ function viewCardHTML(it){
         <div class="att-list">
           ${it.attachments.map(a=>{
             const isImg = (a.mime||'').startsWith('image/');
-            const name  = esc(a.name || a.path || 'archivo');
-            const url   = esc(a.url || '');
-            if (isImg){
-              const bust = cacheBust(url);
-              return `
-                <a href="${url}" target="_blank" class="att att-img" title="${name}">
-                  <img src="${bust}" alt="${name}" loading="lazy"
-                       onerror="this.onerror=null;this.parentElement.outerHTML=
-                         '<a href=&quot;${url}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
-                         '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';">
-                </a>`;
-            }
+const name  = esc(a.name || a.path || 'archivo');
+
+// URL cruda (sin escapar) para manipularla
+const raw   = a.url || '';
+// HREF: al objeto original (para abrir en grande)
+const href  = esc(raw);
+// SRC: render/image + cache-bust (mejor compatibilidad)
+const src   = esc(cacheBust(raw.replace('/object/public/','/render/image/public/')));
+
+if (isImg){
+  return `
+    <a href="${href}" target="_blank" class="att att-img" title="${name}">
+      <img src="${src}" alt="${name}" loading="lazy"
+           onerror="this.onerror=null;this.parentElement.outerHTML=
+             '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
+             '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';"/>
+    </a>`;
+}
+
             return `<a href="${url}" target="_blank" class="att" title="${name}">
                       <i class="fa-solid fa-paperclip"></i>${name}
                     </a>`;
