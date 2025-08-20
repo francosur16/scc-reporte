@@ -2,7 +2,15 @@
 <html lang="es">
 <head>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script type="module">
+  import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+  window.supa = createClient(
+    'https://ixzpjcuuvorndkgphtue.supabase.co',
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enBqY3V1dm9ybmRrZ3BodHVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU1MzgzMjcsImV4cCI6MjA3MTExNDMyN30.m5t7dnPUpNygn0VD4NccsZsUcNoxJJXKnMUkspHNpp8'
+  )
+  window.SUPABASE_URL = 'https://ixzpjcuuvorndkgphtue.supabase.co'
+  window.BUCKET = 'novedades'
+</script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Reporte de Campaña · SCC</title>
@@ -866,9 +874,6 @@ const BOARD_SLUG = 'scc-reporte-publico';
 const BUCKET = 'novedades';
 const MAX_FILE_MB = 5; // límite por archivo (podés subirlo/lowerlo)
 
-
-const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 console.log('[scc] supabase global?', typeof supabase);
 console.log('[scc] client ok?', !!supa);
 console.log('[scc] url:', SUPABASE_URL);
@@ -920,34 +925,42 @@ async function uploadFileToSupabase(file, itemId){
   const path = `${itemId}/${Date.now()}-${safeName}`;
   console.log('[upload] path ->', `${BUCKET}/${path}`);
 
-  const { data, error } = await supa
-    .storage.from(BUCKET)
-    .upload(path, processed, {
-      cacheControl: '3600',
-      contentType: processed.type || 'application/octet-stream',
-      upsert: false
-    });
+  // timeout “duro” para que no quede colgado
+  const timeout = new Promise((_, rej)=> setTimeout(()=> rej(new Error('Timeout subiendo a Storage (15s)')), 15000));
 
-  if (error) {
-    console.error('[upload] ERROR from supabase', error);
-    // Propaga mensaje claro (policy/bucket/rol/excede size/etc.)
-    throw new Error(error.message || String(error));
-  }
+  const op = (async ()=>{
+    const { data, error } = await supa
+      .storage.from(BUCKET)
+      .upload(path, processed, {
+        cacheControl: '3600',
+        contentType: processed.type || 'application/octet-stream',
+        upsert: false
+      });
 
-  const { data: pub, error: pubErr } = supa.storage.from(BUCKET).getPublicUrl(path);
-  if (pubErr) {
-    console.error('[upload] public url error', pubErr);
-    throw new Error(pubErr.message || String(pubErr));
-  }
+    // Log del response crudo (si la lib lo expone)
+    if (data?.Key || data?.id) console.log('[upload] storage data', data);
+    if (error) {
+      console.error('[upload] ERROR from supabase', error);
+      throw new Error(error.message || String(error));
+    }
 
-  console.log('[upload] OK', pub.publicUrl);
-  return {
-    path,
-    url: pub.publicUrl,
-    mime: processed.type || file.type || 'application/octet-stream',
-    size: processed.size ?? file.size,
-    name: file.name
-  };
+    const { data: pub, error: pubErr } = supa.storage.from(BUCKET).getPublicUrl(path);
+    if (pubErr) {
+      console.error('[upload] public url error', pubErr);
+      throw new Error(pubErr.message || String(pubErr));
+    }
+
+    console.log('[upload] OK', pub.publicUrl);
+    return {
+      path,
+      url: pub.publicUrl,
+      mime: processed.type || file.type || 'application/octet-stream',
+      size: processed.size ?? file.size,
+      name: file.name
+    };
+  })();
+
+  return Promise.race([op, timeout]);
 }
 
 
