@@ -1399,30 +1399,30 @@ function viewCardHTML(it){
 
     <div class="card-main">
       <div class="card-title">${rich(it.titulo)}</div>
-${it.detalle ? `<div class="card-detail" style="color:#374151">${rich(it.detalle)}</div>`:''}
+      ${it.detalle ? `<div class="card-detail" style="color:#374151">${rich(it.detalle)}</div>`:''}
 
-${Array.isArray(it.attachments) && it.attachments.length ? `
-  <div class="att-list">
-    ${it.attachments.map(a=>{
-      const isImg = (a.mime||'').startsWith('image/');
-      const name  = esc(a.name || a.path || 'archivo');
-
-      // Si por alguna razón no quedó guardada la url, la reconstruimos del path:
-      const rawUrl = a.url || supa.storage.from(BUCKET).getPublicUrl(a.path).data.publicUrl;
-      const url = cacheBust(rawUrl);
-
-      return isImg
-        ? `<a href="${rawUrl}" target="_blank" class="att att-img" title="${name}">
-             <img src="${url}" alt="${name}" loading="lazy"
-                  onerror="this.parentElement.className='att'; this.parentElement.innerHTML='<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}'; this.parentElement.href='${rawUrl}'">
-           </a>`
-        : `<a href="${url}" target="_blank" class="att" title="${name}">
-             <i class="fa-solid fa-paperclip"></i>${name}
-           </a>`;
-    }).join('')}
-  </div>` : ''
-}
-
+      ${Array.isArray(it.attachments) && it.attachments.length ? `
+        <div class="att-list">
+          ${it.attachments.map(a=>{
+            const isImg = (a.mime||'').startsWith('image/');
+            const name  = esc(a.name || a.path || 'archivo');
+            const url   = esc(a.url || '');
+            if (isImg){
+              const bust = cacheBust(url);
+              return `
+                <a href="${url}" target="_blank" class="att att-img" title="${name}">
+                  <img src="${bust}" alt="${name}" loading="lazy"
+                       onerror="this.onerror=null;this.parentElement.outerHTML=
+                         '<a href=&quot;${url}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
+                         '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';">
+                </a>`;
+            }
+            return `<a href="${url}" target="_blank" class="att" title="${name}">
+                      <i class="fa-solid fa-paperclip"></i>${name}
+                    </a>`;
+          }).join('')}
+        </div>` : ''
+      }
 
       <div class="card-meta">
         ${it.resuelta ? '<span class="badge resuelta"><i class="fa-solid fa-check"></i> Resuelta</span>' : ''}
