@@ -1134,17 +1134,35 @@ function deleteCampaignById(id){
   render();
 }
 
-// MODO SEGURO: ignorar nube (rescate)
-async function loadCloud() {
-  console.log('[SAFE] loadCloud desactivado — uso localStorage');
-  return null;
+async function loadCloud(){
+  try{
+    const r = await fetch(`/.netlify/functions/pull?slug=${encodeURIComponent(BOARD_SLUG)}`, { cache:'no-store' });
+    const j = await r.json();
+    console.log('[pull]', j);
+    return j?.data || null;
+  }catch(e){
+    console.log('[pull ERR]', e);
+    return null;
+  }
 }
 
-async function saveCloud() {
-  console.log('[SAFE] saveCloud desactivado — guardo solo localStorage');
-  return true;
+async function saveCloud(){
+  try{
+    const r = await fetch('/.netlify/functions/push', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: BOARD_SLUG, data: state })
+    });
+    const j = await r.json();
+    console.log('[push]', j);
+    const ok = !!j?.ok;
+    if (ok) showSavedToast();  // 👈 vuelve el "Guardado ✅"
+    return ok;
+  }catch(e){
+    console.log('[push ERR]', e);
+    return false;
+  }
 }
-
 
     function active(){ return state.campaigns.find(c=>c.id===state.activeId) || null }
     function ensureCampaign(){ if(!state.campaigns.length){ openCampaignModal('new'); }}
@@ -1906,20 +1924,30 @@ const add=(cat,tit,det,resp,days,res=false)=>{
 
 
 (async function bootstrap(){
-  console.log('[bootstrap][SAFE] start (solo local)');
+  console.log('[bootstrap] start');
+  let cloud = null;
+
   try {
-    const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-    if (local && typeof local === 'object' && Array.isArray(local.campaigns)) {
-      state = local;
-      console.log('[bootstrap][SAFE] restaurado desde local:', state.campaigns.length, 'campañas');
-    } else {
-      console.warn('[bootstrap][SAFE] no había estado local. No borro nada.');
-    }
+    cloud = await loadCloud(); // intenta leer de la nube
   } catch (e) {
-    console.error('[bootstrap][SAFE] error leyendo localStorage', e);
+    console.error('[bootstrap] loadCloud error', e);
   }
+
+  if (cloud && typeof cloud === 'object') {
+    console.log('[bootstrap] usando estado REMOTO');
+    state = cloud;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } else {
+    console.warn('[bootstrap] no hay doc remoto o falló la lectura; NO subo vacío.');
+    // solo empujo si ya tenías algo local (para no pisar en blanco)
+    if (state && Array.isArray(state.campaigns) && state.campaigns.length) {
+      console.log('[bootstrap] empujando estado LOCAL existente a la nube');
+      await saveCloud();
+    }
+  }
+
   render();
-  if (!state.campaigns.length) ensureCampaign(); // abre modal si estaba vacío
+  if (!state.campaigns.length) ensureCampaign(); // abre “Nueva” si estaba vacío
 })();
 
 
