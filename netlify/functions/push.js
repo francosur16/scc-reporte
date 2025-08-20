@@ -1,8 +1,11 @@
 const { createClient } = require('@supabase/supabase-js');
 
-module.exports = async (event, context) => {
+exports.handler = async (event, context) => {
   try {
-    const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SUPABASE_SERVICE_KEY =
+      process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE;
+
     if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
       return { statusCode: 500, body: JSON.stringify({ error: 'Missing SUPABASE envs' }) };
     }
