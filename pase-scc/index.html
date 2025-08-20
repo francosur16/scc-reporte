@@ -869,6 +869,12 @@ const MAX_FILE_MB = 5; // límite por archivo (podés subirlo/lowerlo)
 
 const supa = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+console.log('[scc] supabase global?', typeof supabase);
+console.log('[scc] client ok?', !!supa);
+console.log('[scc] url:', SUPABASE_URL);
+console.log('[scc] bucket:', BUCKET);
+
+
 // === Helpers de subida directa a Supabase Storage (sin función serverless) ===
 function sanitizeName(name) {
   return (name || 'archivo')
@@ -898,20 +904,43 @@ async function compressImageIfNeeded(file, maxW = 1600, quality = 0.85){
 }
 
 async function uploadFileToSupabase(file, itemId){
-  // comprimir si conviene
-  const processed = await compressImageIfNeeded(file);
+  console.log('[upload] start', { name: file?.name, type: file?.type, size: file?.size });
+  if (!file) throw new Error('No se recibió archivo');
 
-  // seguridad en nombre + path único
-  const safeName = sanitizeName(processed.name);
+  // comprimir si conviene
+  let processed = file;
+  try {
+    processed = await compressImageIfNeeded(file);
+    console.log('[upload] processed', { name: processed.name, type: processed.type, size: processed.size });
+  } catch (e) {
+    console.warn('[upload] compress skip/warn', e);
+  }
+
+  const safeName = sanitizeName(processed.name || 'archivo');
   const path = `${itemId}/${Date.now()}-${safeName}`;
+  console.log('[upload] path ->', `${BUCKET}/${path}`);
 
   const { data, error } = await supa
     .storage.from(BUCKET)
-    .upload(path, processed, { contentType: processed.type || 'application/octet-stream', upsert: false });
+    .upload(path, processed, {
+      cacheControl: '3600',
+      contentType: processed.type || 'application/octet-stream',
+      upsert: false
+    });
 
-  if (error) throw error;
+  if (error) {
+    console.error('[upload] ERROR from supabase', error);
+    // Propaga mensaje claro (policy/bucket/rol/excede size/etc.)
+    throw new Error(error.message || String(error));
+  }
 
-  const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path);
+  const { data: pub, error: pubErr } = supa.storage.from(BUCKET).getPublicUrl(path);
+  if (pubErr) {
+    console.error('[upload] public url error', pubErr);
+    throw new Error(pubErr.message || String(pubErr));
+  }
+
+  console.log('[upload] OK', pub.publicUrl);
   return {
     path,
     url: pub.publicUrl,
@@ -920,6 +949,7 @@ async function uploadFileToSupabase(file, itemId){
     name: file.name
   };
 }
+
 
     // ====== Storage y Estado ======
     const STORAGE_KEY = 'scc-pase-novedades-v1';
@@ -1549,13 +1579,16 @@ btnSave.addEventListener('click', async ()=>{
   const nt = ti.value.trim();
   if(!nt){ ti.focus(); return }
 
+  // Validación rápida de bucket/cliente
+  if (!BUCKET) { alert('Falta configurar el BUCKET'); return; }
+  if (!supa)   { alert('Supabase no inicializado'); return; }
+
   // Actualizamos campos del item
   it.titulo      = nt;
   it.detalle     = (ta.value||'').trim();
   it.responsable = (get('responsable').value||'').trim();
   it.updatedAt   = new Date().toISOString();
 
-  // Adjuntos (subida directa sin base64)
   const filesInput = get('files');
   if (filesInput && filesInput.files && filesInput.files.length){
     it.attachments = Array.isArray(it.attachments) ? it.attachments : [];
@@ -1567,8 +1600,8 @@ btnSave.addEventListener('click', async ()=>{
         continue;
       }
       try{
-        const meta = await uploadFileToSupabase(f, it.id); // 👈 directo a Storage
-        it.attachments.push(meta);                         // {path,url,mime,size,name}
+        const meta = await uploadFileToSupabase(f, it.id);
+        it.attachments.push(meta);
       }catch(e){
         console.error('[upload direct] error', e);
         alert('No se pudo subir "'+f.name+'": '+ (e?.message || e));
@@ -1576,9 +1609,10 @@ btnSave.addEventListener('click', async ()=>{
     }
   }
 
-  save();   // guarda local + nube (tu save() ya sube el JSON)
-  render(); // re-dibuja con los adjuntos
+  save();   // guarda local + nube
+  render(); // re-dibuja con adjuntos
 });
+
 
     btnCancel.addEventListener('click', ()=>{ render(); });
   }
@@ -1933,6 +1967,27 @@ window.scc = {
   cloudGet: ()=>supa.from('boards').select('data').eq('slug', BOARD_SLUG).maybeSingle().then(r=>{console.log('[cloudGet]', r); return r;}),
   cloudSave: saveCloud
 };
+
+// ==== Diagnóstico rápido de Storage (temporal) ====
+window.sccTest = async function(){
+  try{
+    // 1) prueba de list() (requiere policy SELECT OK)
+    const list = await supa.storage.from(BUCKET).list('', { limit: 1 });
+    console.log('[diag] list()', list);
+
+    // 2) prueba de upload con un blob chiquito
+    const blob = new Blob(['hola storage'], { type:'text/plain' });
+    const fakeFile = new File([blob], 'diag.txt', { type:'text/plain' });
+    const meta = await uploadFileToSupabase(fakeFile, 'diag');
+    alert('Diag OK: '+ meta.url);
+    console.log('[diag] upload meta', meta);
+  }catch(e){
+    console.error('[diag] fail', e);
+    alert('Diag FAIL: '+ (e?.message||e));
+  }
+};
+console.log('Escribí sccTest() en la consola para probar el upload de diagnóstico.');
+
 
 </script>
 <!-- Toast de guardado -->
