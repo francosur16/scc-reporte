@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -1132,35 +1131,15 @@ function deleteCampaignById(id){
   render();
 }
 
-async function loadCloud(){
-  try{
-    const r = await fetch(`/.netlify/functions/pull?slug=${encodeURIComponent(BOARD_SLUG)}`, { cache:'no-store' });
-    const j = await r.json();
-    console.log('[pull]', j);
-    return j?.data || null;
-  }catch(e){
-    console.log('[pull ERR]', e);
-    return null;
-  }
+// MODO SEGURO: ignorar nube (rescate)
+async function loadCloud() {
+  console.log('[SAFE] loadCloud desactivado — uso localStorage');
+  return null;
 }
 
-async function saveCloud(){
-  try{
-    const r = await fetch('/.netlify/functions/push', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ slug: BOARD_SLUG, data: state })
-    });
-    const j = await r.json();
-    console.log('[push]', j);
-
-    const ok = !!j?.ok;
-    if (ok) showSavedToast();     // 👈 muestra "Guardado ✅" si guardó bien
-    return ok;
-  }catch(e){
-    console.log('[push ERR]', e);
-    return false;
-  }
+async function saveCloud() {
+  console.log('[SAFE] saveCloud desactivado — guardo solo localStorage');
+  return true;
 }
 
 
@@ -1924,32 +1903,22 @@ const add=(cat,tit,det,resp,days,res=false)=>{
 
 
 (async function bootstrap(){
-  console.log('[bootstrap] start');
-  let cloud = null;
-
+  console.log('[bootstrap][SAFE] start (solo local)');
   try {
-    cloud = await loadCloud(); // intenta leer
-  } catch (e) {
-    console.error('[bootstrap] loadCloud error', e);
-  }
-
-  if (cloud && typeof cloud === 'object') {
-    console.log('[bootstrap] usando estado REMOTO');
-    state = cloud;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } else {
-    console.warn('[bootstrap] no hay doc remoto o fallo la lectura; NO subo vacío.');
-    // Solo subo si YA hay algo local (p.ej. si volvés a entrar con una campaña creada)
-    if (state && Array.isArray(state.campaigns) && state.campaigns.length) {
-      console.log('[bootstrap] empujando estado LOCAL existente a la nube');
-      await saveCloud();
+    const local = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    if (local && typeof local === 'object' && Array.isArray(local.campaigns)) {
+      state = local;
+      console.log('[bootstrap][SAFE] restaurado desde local:', state.campaigns.length, 'campañas');
+    } else {
+      console.warn('[bootstrap][SAFE] no había estado local. No borro nada.');
     }
+  } catch (e) {
+    console.error('[bootstrap][SAFE] error leyendo localStorage', e);
   }
-
   render();
-  if (!state.campaigns.length) ensureCampaign(); // abre modal "Nueva" si está vacío
-
+  if (!state.campaigns.length) ensureCampaign(); // abre modal si estaba vacío
 })();
+
 
 
 window.forcePull = async ()=>{
