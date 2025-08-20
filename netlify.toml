@@ -1,5 +1,6 @@
 [build]
-publish = "pase-scc"  # <- donde está tu index.html
+  publish = "."
+  functions = "netlify/functions"
 
 [functions]
-directory = "netlify/functions"
+  node_bundler = "esbuild"
