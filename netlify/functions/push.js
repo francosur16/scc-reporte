@@ -1,41 +1,26 @@
-// netlify/functions/push.js
 import { createClient } from '@supabase/supabase-js';
 
-export const handler = async (event) => {
+export default async (event, context) => {
   try {
-    if (event.httpMethod !== 'POST') {
-      return resp(405, { error: 'Method not allowed' });
+    const { SUPABASE_URL, SUPABASE_SERVICE_KEY } = process.env;
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
+      return { statusCode: 500, body: JSON.stringify({ error: 'Missing SUPABASE envs' }) };
+    }
+    const { slug, data: boardData } = JSON.parse(event.body || '{}');
+    if (!slug || !boardData) {
+      return { statusCode: 400, body: JSON.stringify({ error: 'missing slug/data' }) };
     }
 
-    const url = process.env.SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE;
-    const table = process.env.BOARDS_TABLE || 'boards';
+    const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
-    if (!url || !key) return resp(500, { error: 'Missing SUPABASE envs' });
+    // upsert por slug
+    const { error } = await supa
+      .from('boards')
+      .upsert({ slug, data: boardData }, { onConflict: 'slug' });
 
-    const body = JSON.parse(event.body || '{}');
-    const slug = (body.slug || '').trim();
-    const payload = body.data;
-
-    if (!slug) return resp(400, { error: 'Missing slug' });
-    if (typeof payload !== 'object') return resp(400, { error: 'Missing data' });
-
-    const supa = createClient(url, key);
-    const row = { slug, data: payload, updated_at: new Date().toISOString() };
-
-    const { error } = await supa.from(table).upsert(row, { onConflict: 'slug' });
-    if (error) return resp(500, { error: error.message });
-
-    return resp(200, { ok: true });
+    if (error) return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+    return { statusCode: 200, body: JSON.stringify({ ok: true }) };
   } catch (e) {
-    return resp(500, { error: e.message });
+    return { statusCode: 500, body: JSON.stringify({ error: e?.message || String(e) }) };
   }
 };
-
-function resp(statusCode, body){
-  return {
-    statusCode,
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  };
-}
