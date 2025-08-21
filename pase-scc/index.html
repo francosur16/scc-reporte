@@ -896,28 +896,38 @@ function cacheBust(url){
 }
 
 // ==== Helpers para armar URLs del proxy de imágenes ====
+// Nota: muchos adjuntos tienen `path` SIN bucket (p.ej. "co7d7.../archivo.jpg").
+// Estos helpers garantizan que siempre vaya "novedades/..." al proxy.
 function storagePathFrom(att){
-  // si vino con path, lo uso así como está (suele incluir el bucket)
-  if (att?.path) return att.path;
+  const BUCKET_NAME = BUCKET || 'novedades';
 
-  // si sólo tengo la url pública, extraigo "bucket/clave"
-  const m = (att?.url || '').match(/storage\/v1\/object\/public\/([^?]+)/);
-  return m ? m[1] : null; // p.ej. "novedades/abc123/archivo.jpg"
+  let p = att?.path || null; // puede venir sin bucket
+
+  // Si no hay path, intentá extraerlo de la URL pública (esta sí incluye bucket)
+  if (!p && att?.url){
+    const m = att.url.match(/storage\/v1\/object\/public\/([^?]+)/);
+    if (m) p = m[1]; // ej: "novedades/xxx/archivo.jpg"
+  }
+
+  if (!p) return null;
+
+  // Asegurar prefijo de bucket
+  if (!p.startsWith(BUCKET_NAME + '/')) {
+    p = `${BUCKET_NAME}/${p}`;
+  }
+  return p; // ej final: "novedades/co7d7th3fzmekkrdql/archivo.jpg"
 }
 
 function proxyHref(att){
-  const p = storagePathFrom(att);
-  if (!p) return att?.url || '#';
-  // abre el archivo "grande" pasando por el proxy
-  return `/.netlify/functions/img?path=${encodeURIComponent(p)}`;
+  const full = storagePathFrom(att);
+  return full ? `/.netlify/functions/img?path=${encodeURIComponent(full)}` : (att?.url || '#');
 }
 
 function proxySrc(att){
-  const p = storagePathFrom(att);
-  if (!p) return att?.url || '';
-  // miniatura (mismo proxy) + cache-bust para evitar caches raros del navegador/CDN
-  return `/.netlify/functions/img?path=${encodeURIComponent(p)}&t=${Date.now()}`;
+  const full = storagePathFrom(att);
+  return full ? `/.netlify/functions/img?path=${encodeURIComponent(full)}&t=${Date.now()}` : (att?.url || '');
 }
+
 
 
 async function compressImageIfNeeded(file, maxW = 1600, quality = 0.85){
