@@ -1404,13 +1404,19 @@ function viewCardHTML(it){
       ${Array.isArray(it.attachments) && it.attachments.length ? `
         <div class="att-list">
           ${it.attachments.map(a=>{
-            const isImg = (a.mime||'').startsWith('image/');
-            const name  = esc(a.name || a.path || 'archivo');
+const isImg = (a.mime||'').startsWith('image/');
+const name  = esc(a.name || a.path || 'archivo');
 
-            // URL pública directa devuelta por la función (NO render/image)
-            const raw  = a.url || '';
-            const href = esc(raw);                 // abrir grande = objeto original
-            const src  = esc(cacheBust(raw));      // miniatura = mismo objeto + cache-bust
+// usamos el path interno para el proxy
+const path  = a.path || ''; // ej: pw9z3.../1755...-foto.jpg
+
+// link al original por tu dominio (descarga)
+const href  = `/.netlify/functions/img?path=${encodeURIComponent(path)}&dl=1`;
+
+// src para mostrar en tarjeta/presentación/PDF (misma función, sin &dl)
+const src   = isImg
+  ? `/.netlify/functions/img?path=${encodeURIComponent(path)}`
+  : href;
 
             if (isImg){
               return `
