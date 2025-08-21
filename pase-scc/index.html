@@ -1358,6 +1358,9 @@ CATEGORIES.forEach(cat=>{
   }
 });
 
+// 🔧 Post-render: asegurar thumbnails correctas
+forceRenderThumbs();        // B) aplica render/image a todos
+fixThumbsWithSigned();      // C) opcional: firma si hace falta
 
       // contadores (abiertas) + contador grande
   CATEGORIES.forEach(cat=>{
@@ -1438,6 +1441,51 @@ if (isImg){
       </div>
     </div>
   `;
+}
+
+// === B) Forzar que todas las miniaturas usen /render/image/public/ ===
+function forceRenderThumbs(){
+  const imgs = [...document.querySelectorAll('.att-img img')];
+  for (const im of imgs){
+    const u = im.getAttribute('src') || '';
+    if (u.includes('/object/public/')){
+      const r = u.replace('/object/public/','/render/image/public/');
+      im.setAttribute('src', r + (r.includes('?') ? '&' : '?') + 't=' + Date.now());
+    }
+  }
+}
+
+// === C) (Opcional) Fallback firmado si algún render falla/expira ===
+async function fixThumbsWithSigned(){
+  const imgs = [...document.querySelectorAll('.att-img img')];
+  for(const im of imgs){
+    try{
+      const href = im.closest('a')?.getAttribute('href');
+      if(!href) continue;
+
+      // extraigo "{bucket}/{path}" desde la pública (object/public)
+      const m = href.match(/storage\/v1\/object\/public\/([^?]+)/);
+      if(!m) continue;
+      const full = m[1]; // ej: novedades/xxx/archivo.jpg
+
+      // OJO: createSignedUrl usa "path dentro del bucket", sin el nombre del bucket
+      const pathInBucket = full.replace(/^novedades\//,''); // si cambiás de bucket, ajustá aquí
+
+      const { data, error } = await supa.storage
+        .from('novedades')                 // ⇐ o BUCKET si preferís
+        .createSignedUrl(pathInBucket, 3600);
+      if(error || !data?.signedUrl) continue;
+
+      // firmada pero vía render, para que la procese el edge
+      const authRender = data.signedUrl.replace('/object/sign/','/render/image/sign/');
+      const bust = authRender + (authRender.includes('?')?'&':'?') + 't=' + Date.now();
+
+      // solo si todavía no cargó bien
+      if (!im.complete || !im.naturalWidth){
+        im.src = bust;
+      }
+    }catch(_){ /* silent */ }
+  }
 }
 
 function editCardHTML(it){
