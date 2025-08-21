@@ -1462,11 +1462,10 @@ ${it.attachments.map(a=>{
     return `
       <a href="${href}" target="_blank" class="att att-img" title="${name}">
         <img src="${src}" alt="${name}" width="160" height="120"
-     loading="lazy" decoding="async"
-     referrerpolicy="no-referrer" crossorigin="anonymous"
-     onerror="this.onerror=null;this.parentElement.outerHTML=
-       '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
-       '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';"/>
+             loading="lazy" decoding="async"
+             onerror="this.onerror=null;this.parentElement.outerHTML=
+               '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
+               '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';">
       </a>`;
   }
   return `
