@@ -1438,28 +1438,34 @@ function viewCardHTML(it){
 
     ${Array.isArray(it.attachments) && it.attachments.length ? `
   <div class="att-list">
-    ${it.attachments.map(a=>{
-      const isImg = (a?.mime || '').startsWith('image/');
-      const name  = esc(a?.name || a?.path || 'archivo');
+${it.attachments.map(a=>{
+  const isImg = (a?.mime || '').startsWith('image/');
+  const name  = esc(a?.name || a?.path || 'archivo');
 
-      const href  = esc(proxyHref(a)); // abre grande por proxy
-      const src   = esc(proxySrc(a));  // miniatura por proxy (con cache-bust)
+  // URL pública directa (preferí a.url; si no, la armo con path)
+  const href = esc(
+    a?.url ||
+    `${SUPABASE_URL}/storage/v1/object/public/${BUCKET}/${a?.path || ''}`
+  );
 
-      if (isImg){
-        return `
-          <a href="${href}" target="_blank" class="att att-img" title="${name}">
-            <img src="${src}" alt="${name}" width="160" height="120"
-                 loading="lazy" decoding="async"
-                 onerror="this.onerror=null;this.parentElement.outerHTML=
-                   '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
-                   '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';">
-          </a>`;
-      }
-      return `
-        <a href="${href}" target="_blank" class="att" title="${name}">
-          <i class="fa-solid fa-paperclip"></i>${name}
-        </a>`;
-    }).join('')}
+  // miniatura = misma URL + cache-bust
+  const src = href ? (href + (href.includes('?') ? '&' : '?') + 't=' + Date.now()) : '';
+
+  if (isImg){
+    return `
+      <a href="${href}" target="_blank" class="att att-img" title="${name}">
+        <img src="${src}" alt="${name}" width="160" height="120"
+             loading="lazy" decoding="async"
+             onerror="this.onerror=null;this.parentElement.outerHTML=
+               '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
+               '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';">
+      </a>`;
+  }
+  return `
+    <a href="${href}" target="_blank" class="att" title="${name}">
+      <i class="fa-solid fa-paperclip"></i>${name}
+    </a>`;
+}).join('')}
   </div>` : ''}
 
 
