@@ -895,6 +895,31 @@ function cacheBust(url){
   }
 }
 
+// ==== Helpers para armar URLs del proxy de imágenes ====
+function storagePathFrom(att){
+  // si vino con path, lo uso así como está (suele incluir el bucket)
+  if (att?.path) return att.path;
+
+  // si sólo tengo la url pública, extraigo "bucket/clave"
+  const m = (att?.url || '').match(/storage\/v1\/object\/public\/([^?]+)/);
+  return m ? m[1] : null; // p.ej. "novedades/abc123/archivo.jpg"
+}
+
+function proxyHref(att){
+  const p = storagePathFrom(att);
+  if (!p) return att?.url || '#';
+  // abre el archivo "grande" pasando por el proxy
+  return `/.netlify/functions/img?path=${encodeURIComponent(p)}`;
+}
+
+function proxySrc(att){
+  const p = storagePathFrom(att);
+  if (!p) return att?.url || '';
+  // miniatura (mismo proxy) + cache-bust para evitar caches raros del navegador/CDN
+  return `/.netlify/functions/img?path=${encodeURIComponent(p)}&t=${Date.now()}`;
+}
+
+
 async function compressImageIfNeeded(file, maxW = 1600, quality = 0.85){
   if (!file || !file.type?.startsWith('image/')) return file;
   // Si ya es liviana y no es PNG grande, no convertir
@@ -1401,36 +1426,32 @@ function viewCardHTML(it){
       <div class="card-title">${rich(it.titulo)}</div>
       ${it.detalle ? `<div class="card-detail" style="color:#374151">${rich(it.detalle)}</div>` : ''}
 
-      ${Array.isArray(it.attachments) && it.attachments.length ? `
-        <div class="att-list">
-          ${it.attachments.map(a=>{
-const isImg = (a.mime||'').startsWith('image/');
-const name  = esc(a.name || a.path || 'archivo');
+    ${Array.isArray(it.attachments) && it.attachments.length ? `
+  <div class="att-list">
+    ${it.attachments.map(a=>{
+      const isImg = (a?.mime || '').startsWith('image/');
+      const name  = esc(a?.name || a?.path || 'archivo');
 
-// usamos el path interno para el proxy
-const path  = a.path || ''; // ej: pw9z3.../1755...-foto.jpg
+      const href  = esc(proxyHref(a)); // abre grande por proxy
+      const src   = esc(proxySrc(a));  // miniatura por proxy (con cache-bust)
 
-// link al original por tu dominio (descarga)
-const href  = `/.netlify/functions/img?path=${encodeURIComponent(path)}&dl=1`;
+      if (isImg){
+        return `
+          <a href="${href}" target="_blank" class="att att-img" title="${name}">
+            <img src="${src}" alt="${name}" width="160" height="120"
+                 loading="lazy" decoding="async"
+                 onerror="this.onerror=null;this.parentElement.outerHTML=
+                   '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
+                   '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';">
+          </a>`;
+      }
+      return `
+        <a href="${href}" target="_blank" class="att" title="${name}">
+          <i class="fa-solid fa-paperclip"></i>${name}
+        </a>`;
+    }).join('')}
+  </div>` : ''}
 
-// src para mostrar en tarjeta/presentación/PDF (misma función, sin &dl)
-const src   = isImg
-  ? `/.netlify/functions/img?path=${encodeURIComponent(path)}`
-  : href;
-
-            if (isImg){
-              return `
-                <a href="${href}" target="_blank" class="att att-img" title="${name}">
-                  <img src="${src}" alt="${name}" loading="lazy" decoding="async" referrerpolicy="no-referrer"
-                       onerror="this.onerror=null;this.src='${esc(raw)}?t='+Date.now();"/>
-                </a>`;
-            }
-            return `
-              <a href="${href}" target="_blank" class="att" title="${name}">
-                <i class="fa-solid fa-paperclip"></i>${name}
-              </a>`;
-          }).join('')}
-        </div>` : ''}
 
       <div class="card-meta">
         ${it.resuelta ? '<span class="badge resuelta"><i class="fa-solid fa-check"></i> Resuelta</span>' : ''}
@@ -1441,15 +1462,6 @@ const src   = isImg
   `;
 }
 
-function forceRenderThumbs(){
-  const imgs = [...document.querySelectorAll('.att-img img')];
-  for (const im of imgs){
-    const u = im.getAttribute('src') || '';
-    if (u && !/[?&]t=\d+/.test(u)){
-      im.src = cacheBust(u);
-    }
-  }
-}
 
 // === C) (Opcional) Fallback firmado si algún render falla/expira ===
 async function fixThumbsWithSigned(){
