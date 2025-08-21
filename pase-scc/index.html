@@ -1383,6 +1383,7 @@ CATEGORIES.forEach(cat=>{
 function viewCardHTML(it){
   const toggleTitle = it.resuelta ? 'Marcar abierta' : 'Marcar resuelta';
   const toggleIcon  = it.resuelta ? 'fa-rotate-left' : 'fa-check';
+
   return `
     <div class="rail-left btns-print-hide">
       <button class="icon-btn icon-only" data-act="toggle" type="button" title="${toggleTitle}" aria-label="${toggleTitle}">
@@ -1398,38 +1399,32 @@ function viewCardHTML(it){
 
     <div class="card-main">
       <div class="card-title">${rich(it.titulo)}</div>
-      ${it.detalle ? `<div class="card-detail" style="color:#374151">${rich(it.detalle)}</div>`:''}
+      ${it.detalle ? `<div class="card-detail" style="color:#374151">${rich(it.detalle)}</div>` : ''}
 
       ${Array.isArray(it.attachments) && it.attachments.length ? `
         <div class="att-list">
           ${it.attachments.map(a=>{
             const isImg = (a.mime||'').startsWith('image/');
-const name  = esc(a.name || a.path || 'archivo');
+            const name  = esc(a.name || a.path || 'archivo');
 
-// URL cruda (sin escapar) para manipularla
-const raw   = a.url || '';
-// HREF: al objeto original (para abrir en grande)
-const href  = esc(raw);
-// SRC: render/image + cache-bust (mejor compatibilidad)
-const src   = esc(cacheBust(raw)); // ← usamos la pública directa, sin transform
+            // URL pública directa devuelta por la función (NO render/image)
+            const raw  = a.url || '';
+            const href = esc(raw);                 // abrir grande = objeto original
+            const src  = esc(cacheBust(raw));      // miniatura = mismo objeto + cache-bust
 
-if (isImg){
-  return `
-    <a href="${href}" target="_blank" class="att att-img" title="${name}">
-     <img src="${src}" alt="${name}" loading="lazy"
-     onload="console.log('[thumb OK]', this.naturalWidth+'x'+this.naturalHeight, this.src)"
-     onerror="this.onerror=null;this.parentElement.outerHTML=
-       '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
-       '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';"/>
-    </a>`;
-}
-
-           return `<a href="${href}" target="_blank" class="att" title="${name}">
-           <i class="fa-solid fa-paperclip"></i>${name}
-         </a>`;
+            if (isImg){
+              return `
+                <a href="${href}" target="_blank" class="att att-img" title="${name}">
+                  <img src="${src}" alt="${name}" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+                       onerror="this.onerror=null;this.src='${esc(raw)}?t='+Date.now();"/>
+                </a>`;
+            }
+            return `
+              <a href="${href}" target="_blank" class="att" title="${name}">
+                <i class="fa-solid fa-paperclip"></i>${name}
+              </a>`;
           }).join('')}
-        </div>` : ''
-      }
+        </div>` : ''}
 
       <div class="card-meta">
         ${it.resuelta ? '<span class="badge resuelta"><i class="fa-solid fa-check"></i> Resuelta</span>' : ''}
