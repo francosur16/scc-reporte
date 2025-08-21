@@ -1,37 +1,49 @@
-import { createClient } from '@supabase/supabase-js';
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const BUCKET = 'novedades';
-
-const supa = createClient(SUPABASE_URL, SERVICE_KEY);
-
+// netlify/functions/img.js  (ESM)
 export async function handler(event) {
   try {
-    const url  = new URL(event.rawUrl);
-    const path = url.searchParams.get('path');
-    const dl   = url.searchParams.has('dl');
+    const qs = event.queryStringParameters || {};
+    let p = (qs.path || '').replace(/^\/+/, '');  // limpia slashes
 
-    if (!path) return { statusCode: 400, body: 'missing path' };
+    if (!p) {
+      return { statusCode: 400, body: 'Missing ?path=' };
+    }
 
-    const { data, error } = await supa.storage.from(BUCKET).download(path);
-    if (error) throw error;
+    const BUCKET = 'novedades';
+    if (!p.startsWith(BUCKET + '/')) p = `${BUCKET}/${p}`;
 
-    const buf = Buffer.from(await data.arrayBuffer());
-    const headers = {
-      'Content-Type': data.type || 'application/octet-stream',
-      'Cache-Control': 'public, max-age=31536000, immutable',
-      'Access-Control-Allow-Origin': '*',
-      ...(dl ? { 'Content-Disposition': 'attachment' } : {})
-    };
+    // Usa SUPABASE_URL desde variables de entorno en Netlify
+    const SUPABASE_URL = process.env.SUPABASE_URL || 'https://ixzpjcuuvorndkgphtue.supabase.co';
+
+    // Opción A (recomendada): redirección simple a la pública
+    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${p}`;
 
     return {
-      statusCode: 200,
-      headers,
-      body: buf.toString('base64'),
+      statusCode: 302,
+      headers: {
+        Location: publicUrl,
+        'Cache-Control': 'public, max-age=60',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: ''
+    };
+
+    /* ===== Opción B: proxy (si no querés redirigir)
+    const resp = await fetch(publicUrl);
+    const buf = await resp.arrayBuffer();
+    return {
+      statusCode: resp.status,
+      headers: {
+        'Content-Type': resp.headers.get('content-type') || 'application/octet-stream',
+        'Cache-Control': 'public, max-age=60',
+        'Access-Control-Allow-Origin': '*'
+      },
+      body: Buffer.from(buf).toString('base64'),
       isBase64Encoded: true
     };
+    */
   } catch (e) {
-    return { statusCode: 500, body: String(e?.message || e) };
+    // Log visible en Netlify
+    console.error('[img fn] ERROR', e);
+    return { statusCode: 502, body: 'img proxy error: ' + (e?.message || e) };
   }
 }
