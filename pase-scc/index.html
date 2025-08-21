@@ -896,39 +896,39 @@ function cacheBust(url){
 }
 
 // ==== Helpers para armar URLs del proxy de imágenes ====
-// Nota: muchos adjuntos tienen `path` SIN bucket (p.ej. "co7d7.../archivo.jpg").
-// Estos helpers garantizan que siempre vaya "novedades/..." al proxy.
+// ⛔️ DEJAR DE USAR EL PROXY
+
 function storagePathFrom(att){
   const BUCKET_NAME = BUCKET || 'novedades';
+  // 1) si tengo path, lo uso
+  let p = att?.path || null;
 
-  let p = att?.path || null; // puede venir sin bucket
-
-  // Si no hay path, intentá extraerlo de la URL pública (esta sí incluye bucket)
+  // 2) si tengo url pública, extraigo "bucket/key"
   if (!p && att?.url){
     const m = att.url.match(/storage\/v1\/object\/public\/([^?]+)/);
-    if (m) p = m[1]; // ej: "novedades/xxx/archivo.jpg"
+    if (m) p = m[1];
   }
-
   if (!p) return null;
 
-  // Asegurar prefijo de bucket
-  if (!p.startsWith(BUCKET_NAME + '/')) {
-    p = `${BUCKET_NAME}/${p}`;
-  }
-  return p; // ej final: "novedades/co7d7th3fzmekkrdql/archivo.jpg"
+  // 3) asegurar prefijo de bucket
+  if (!p.startsWith(BUCKET_NAME + '/')) p = `${BUCKET_NAME}/${p}`;
+  return p;
 }
 
+// ✅ HREF del adjunto (abrir grande) -> URL PÚBLICA DIRECTA
 function proxyHref(att){
-  const full = storagePathFrom(att);
-  return full ? `/.netlify/functions/img?path=${encodeURIComponent(full)}` : (att?.url || '#');
+  if (att?.url) return att.url;                          // ya viene la pública
+  const p = storagePathFrom(att);
+  return p ? `${SUPABASE_URL}/storage/v1/object/public/${p}` : '#';
 }
 
+// ✅ SRC de la miniatura -> igual que href + cache-bust
 function proxySrc(att){
-  const full = storagePathFrom(att);
-  return full ? `/.netlify/functions/img?path=${encodeURIComponent(full)}&t=${Date.now()}` : (att?.url || '');
+  const u = proxyHref(att);
+  if (!u || u === '#') return '';
+  const sep = u.includes('?') ? '&' : '?';
+  return u + sep + 't=' + Date.now();
 }
-
-
 
 async function compressImageIfNeeded(file, maxW = 1600, quality = 0.85){
   if (!file || !file.type?.startsWith('image/')) return file;
