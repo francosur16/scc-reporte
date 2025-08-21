@@ -1358,10 +1358,6 @@ CATEGORIES.forEach(cat=>{
   }
 });
 
-// 🔧 Post-render: asegurar thumbnails correctas
-forceRenderThumbs();        // B) aplica render/image a todos
-fixThumbsWithSigned();      // C) opcional: firma si hace falta
-
       // contadores (abiertas) + contador grande
   CATEGORIES.forEach(cat=>{
   const abiertas = (all||[]).filter(i=>i.categoria===cat && !i.resuelta).length;
@@ -1415,15 +1411,16 @@ const raw   = a.url || '';
 // HREF: al objeto original (para abrir en grande)
 const href  = esc(raw);
 // SRC: render/image + cache-bust (mejor compatibilidad)
-const src   = esc(cacheBust(raw.replace('/object/public/','/render/image/public/')));
+const src   = esc(cacheBust(raw)); // ← usamos la pública directa, sin transform
 
 if (isImg){
   return `
     <a href="${href}" target="_blank" class="att att-img" title="${name}">
-      <img src="${src}" alt="${name}" loading="lazy"
-           onerror="this.onerror=null;this.parentElement.outerHTML=
-             '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
-             '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';"/>
+     <img src="${src}" alt="${name}" loading="lazy"
+     onload="console.log('[thumb OK]', this.naturalWidth+'x'+this.naturalHeight, this.src)"
+     onerror="this.onerror=null;this.parentElement.outerHTML=
+       '<a href=&quot;${href}&quot; target=&quot;_blank&quot; class=&quot;att&quot; title=&quot;${name}&quot;>' +
+       '<i class=&quot;fa-solid fa-paperclip&quot;></i>${name}</a>';"/>
     </a>`;
 }
 
@@ -1443,14 +1440,12 @@ if (isImg){
   `;
 }
 
-// === B) Forzar que todas las miniaturas usen /render/image/public/ ===
 function forceRenderThumbs(){
   const imgs = [...document.querySelectorAll('.att-img img')];
   for (const im of imgs){
     const u = im.getAttribute('src') || '';
-    if (u.includes('/object/public/')){
-      const r = u.replace('/object/public/','/render/image/public/');
-      im.setAttribute('src', r + (r.includes('?') ? '&' : '?') + 't=' + Date.now());
+    if (u && !/[?&]t=\d+/.test(u)){
+      im.src = cacheBust(u);
     }
   }
 }
