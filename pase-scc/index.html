@@ -661,7 +661,8 @@ body.presentation .empty-col{
 .att-img{ border:none; padding:0 }
 .att-img img{ max-width:120px; max-height:90px; border:1px solid var(--border); border-radius:8px; display:block }
 
-input[type="file"].att-file {
+/* Ocultar el botón de elegir archivo en las tarjetas */
+input[type="file"][data-edit="files"] {
   display: none !important;
 }
 
