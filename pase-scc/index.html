@@ -55,7 +55,10 @@ body{
   margin:0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji","Segoe UI Emoji";
   color:var(--text);
-  background:var(--bg);
+  background:
+  radial-gradient(1000px 560px at 100% -120px, rgba(218,165,32,.14), transparent 60%),
+  linear-gradient(160deg, #eeeeebe7 0%, #c0b59f 45%, #0b233f 100%);
+background-attachment: fixed;
 }
 
 /* =========================================================
@@ -666,6 +669,34 @@ input[type="file"][data-edit="files"] {
   display: none !important;
 }
 
+/* Brillo suave para el logo */
+@keyframes sccLogoGlow{
+  0%,100%{
+    filter:
+      drop-shadow(0 2px 6px rgba(0,0,0,.25))
+      drop-shadow(0 0 0 rgba(218,165,32,0));
+  }
+  50%{
+    filter:
+      drop-shadow(0 2px 6px rgba(0,0,0,.25))
+      drop-shadow(0 0 14px rgba(218,165,32,.55));
+  }
+}
+
+/* Activo el brillo en el logo de esquina */
+.corner-logo{
+  animation: sccLogoGlow 3.8s ease-in-out infinite;
+  will-change: filter;
+}
+
+/* Logo con brillo fijo (sin animación) */
+.corner-logo{
+  animation: none !important;
+  filter:
+    drop-shadow(0 2px 6px rgba(0,0,0,.25))       /* sombra base */
+    drop-shadow(0 0 4px rgba(231, 230, 228, 0.55));  /* halo dorado */
+  will-change: auto;
+}
 
 </style>
 </head>
@@ -687,7 +718,6 @@ input[type="file"][data-edit="files"] {
         <button class="btn-outline" id="btnToggleClose"><i class="fa-solid fa-lock"></i> Cerrar</button>
       </div>
       <div class="group group-extra">
-        <button class="btn-outline" id="btnDemo"><i class="fa-solid fa-wand-magic-sparkles"></i> Cargar demo</button>
         <button class="btn-outline" id="btnPresentation"><i class="fa-solid fa-display"></i> Modo presentación</button>
       </div>
       <div class="group group-extra">
@@ -724,9 +754,6 @@ input[type="file"][data-edit="files"] {
         <button id="btnAgregar" class="btn-primary" type="button"><i class="fa-solid fa-plus"></i> Agregar</button>
       </div>
       <textarea id="fDetalle" placeholder="Detalle (opcional). Sugerencia: incluir números de incidente, guardia, ubicación, enlaces, etc."></textarea>
-      <div class="search">
-        <input id="fBuscar" type="text" placeholder="Buscar en todas las novedades... (Ctrl/Cmd + K)" style="width:100%" />
-      </div>
     </div>
 
     <div id="presentHeader" class="present-header"></div>
@@ -1041,7 +1068,6 @@ async function uploadFileToSupabase(file, itemId){
       btnNewCampaign: document.getElementById('btnNewCampaign'),
       btnEditCampaign: document.getElementById('btnEditCampaign'),
       btnToggleClose: document.getElementById('btnToggleClose'),
-      btnDemo: document.getElementById('btnDemo'),
       btnPrint: document.getElementById('btnPrint'),
       btnPresentation: document.getElementById('btnPresentation'),
 
@@ -1053,7 +1079,6 @@ async function uploadFileToSupabase(file, itemId){
       fTitulo: document.getElementById('fTitulo'),
       fResponsable: document.getElementById('fResponsable'),
       fDetalle: document.getElementById('fDetalle'),
-      fBuscar: document.getElementById('fBuscar'),
       btnAgregar: document.getElementById('btnAgregar'),
       campaignStateChip: document.getElementById('campaignStateChip'),
 
@@ -1105,7 +1130,6 @@ cdConfirm: document.getElementById('cdConfirm'),
     };
 
     let state = load() || { campaigns: [], activeId: null };
-    let searchQuery = '';
     let presentIndex = 0; // índice de categoría visible
     let modalMode = 'new'; // 'new' | 'edit'
 
@@ -1176,11 +1200,9 @@ function highlightHTML(html, query){
   }).join('');
 }
 
-// Pipeline: escapa -> linkifica -> resalta (según searchQuery global)
 function rich(text){
   let h = esc(text||'');
   h = linkifyEscaped(h);
-  h = highlightHTML(h, searchQuery);
   return h;
 }
 
@@ -1352,13 +1374,8 @@ els.printCover.innerHTML = `
         els.board.appendChild(col);
       });
 
-      // items filtrados + ordenado por categoría/prioridad/estado
-      const all = c.items || [];
-      let filtered = all;
-      if(searchQuery){
-        const q = searchQuery.toLowerCase();
-        filtered = all.filter(it=> (it.titulo||'').toLowerCase().includes(q) || (it.detalle||'').toLowerCase().includes(q) || (it.responsable||'').toLowerCase().includes(q));
-      }
+     const all = c.items || [];
+let group = all.filter(it=> it.categoria===cat);
 
     const sortIt = (a,b)=>{
   if(a.resuelta!==b.resuelta) return a.resuelta?1:-1;
@@ -1387,9 +1404,7 @@ CATEGORIES.forEach(cat=>{
     const hasCards = !!body.querySelector('.card');
     let empty = body.querySelector('.empty-col');
     if(!hasCards){
-      const msg = searchQuery
-        ? `Sin resultados en ${cat} para “${esc(searchQuery)}”`
-        : `Sin novedades en ${cat}`;
+     const msg = `Sin novedades en ${cat}`;
       if(!empty){
         empty = document.createElement('div');
         empty.className = 'empty-col';
@@ -1559,8 +1574,6 @@ function editCardHTML(it){
 
     els.btnToggleClose.addEventListener('click', ()=>{ const c = active(); if(!c) return; c.cerrada = !c.cerrada; save(); render(); });
 
-    els.btnDemo.addEventListener('click', loadDemo);
-
     els.btnPrint.addEventListener('click', ()=> window.print());
 
     // Botón Agregar
@@ -1577,10 +1590,7 @@ function editCardHTML(it){
       else if(btn.id==='btnExitPresentation'){ exitPresentation(); }
     });
 
-    els.fBuscar.addEventListener('input', ()=>{ searchQuery = els.fBuscar.value.trim(); render(); });
-
     window.addEventListener('keydown', (e)=>{
-      if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='k'){ e.preventDefault(); els.fBuscar.focus(); return; }
       if(e.key==='Escape' && document.body.classList.contains('presentation')){ e.preventDefault(); exitPresentation(); return; }
       if(document.body.classList.contains('presentation')){
         // Evitar robar foco cuando estás escribiendo en un input (no debería haber inputs en presentación, pero por las dudas)
