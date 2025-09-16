@@ -57,7 +57,7 @@ body{
   color:var(--text);
   background:
   radial-gradient(1000px 560px at 100% -120px, rgba(218,165,32,.14), transparent 60%),
-  linear-gradient(160deg, #eeeeebe7 0%, #c0b59f 45%, #0b233f 100%);
+  linear-gradient(160deg, #eeeeebe7 0%, #a19376a8 45%, #0b233fc9 100%);
 background-attachment: fixed;
 }
 
@@ -1374,37 +1374,36 @@ els.printCover.innerHTML = `
         els.board.appendChild(col);
       });
 
-     const all = c.items || [];
-let group = all.filter(it=> it.categoria===cat);
+     // items (sin buscador) + orden por abiertas primero y más recientes
+const all = c.items || [];
 
-    const sortIt = (a,b)=>{
-  if(a.resuelta!==b.resuelta) return a.resuelta?1:-1;
+const sortIt = (a,b)=>{
+  if(a.resuelta !== b.resuelta) return a.resuelta ? 1 : -1;
   return new Date(b.createdAt) - new Date(a.createdAt);
 };
 
-
 CATEGORIES.forEach(cat=>{
-  let group = filtered.filter(it=> it.categoria===cat);
-  group.sort(sortIt);
   const body = els.board.querySelector(`[data-drop="${cat}"]`);
-  for(const it of group){
+  let group = all.filter(it => it.categoria === cat);
+  group.sort(sortIt);
+
+  // render de tarjetas
+  for (const it of group){
     const card = document.createElement('div');
     card.className = 'card accent';
     card.draggable = !c.cerrada && !document.body.classList.contains('presentation');
     card.dataset.id = it.id;
     card.innerHTML = viewCardHTML(it);
-
-    /* 👇 foco accesible para estilos de focus */
     card.tabIndex = 0;
-
     if(body) body.appendChild(card);
   }
-      /* 👇 Placeholder si no hay tarjetas (o no hay resultados de búsqueda) */
+
+  // placeholder si no hay tarjetas
   if(body){
     const hasCards = !!body.querySelector('.card');
     let empty = body.querySelector('.empty-col');
     if(!hasCards){
-     const msg = `Sin novedades en ${cat}`;
+      const msg = `Sin novedades en ${cat}`;
       if(!empty){
         empty = document.createElement('div');
         empty.className = 'empty-col';
